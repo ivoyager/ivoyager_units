@@ -19,12 +19,12 @@
 # *****************************************************************************
 extends Node
 
-# This node is added as singleton "IVQFormat". 
-#
-# Provides functions for formatting numbers or unit quantities.
-#
-# If using named numbers or 'long_form' units, you'll need to add localized
-# text/unit_numbers_text.en.translation to your Project.
+## This node is added as singleton "IVQFormat"
+##
+## Provides functions for formatting numbers or unit quantities.[br][br]
+##
+## If using named numbers or 'long_form' units, you'll need to add localized
+## text/unit_numbers_text.en.translation to your Project.
 
 
 enum TextFormat {

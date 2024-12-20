@@ -19,9 +19,9 @@
 # *****************************************************************************
 extends Node
 
-# This node is added as singleton "IVQConvert".
-#
-# Converts float quantities to or from internal units.
+## This node is added as singleton "IVQConvert"
+##
+## Converts float quantities to or from internal units.
 
 const DPRINT := false
 

@@ -19,18 +19,22 @@
 # *****************************************************************************
 extends Node
 
-# This node is added as singleton 'IVUnits'. You can replace this singleton by
-# creating an override config file in your project directory
-# res://ivoyager_override.cfg (if it doesn't already exist), with these lines:
-#
-# [table_importer_autoload]
-#
-# IVUnits="your_replacement_path"
-#
-#
-# You can add to dictionaries 'unit_multipliers' & 'unit_lambdas' here.
-# However, if you need different base units or derived unit constants, we
-# suggest you replace this singleton as outlined above.
+## Template file for IVUnits singleton
+##
+## This node is added as singleton 'IVUnits'. You can replace this singleton by
+## creating an override config file in your project directory
+## res://ivoyager_override.cfg (if it doesn't already exist), with these lines:
+## [codeblock]
+##
+## [units_autoload]
+##
+## IVUnits="your_replacement_path"
+##
+## [/codeblock]
+##
+## You can add to dictionaries 'unit_multipliers' & 'unit_lambdas' here.
+## However, if you need different base units or derived unit constants, we
+## suggest you replace this singleton as outlined above.
 
 
 # SI base units
