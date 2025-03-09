@@ -25,8 +25,8 @@ extends Node
 
 const DPRINT := false
 
-var unit_multipliers: Dictionary = IVUnits.unit_multipliers
-var unit_lambdas: Dictionary = IVUnits.unit_lambdas
+var unit_multipliers: Dictionary[StringName, float] = IVUnits.unit_multipliers
+var unit_lambdas: Dictionary[StringName, Callable] = IVUnits.unit_lambdas
 
 
 
@@ -61,7 +61,7 @@ func convert_quantity(x: float, unit: StringName, to_internal := true,
 		return x * multiplier if to_internal else x / multiplier
 	
 	if unit_lambdas.has(unit):
-		var lambda: Callable = unit_lambdas[unit]
+		var lambda := unit_lambdas[unit]
 		return lambda.call(x, to_internal)
 	
 	if !parse_compound_unit:
