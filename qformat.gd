@@ -96,7 +96,7 @@ var large_number_names: Array[StringName] = [
 ] # e6, ..., e33
 
 
-var long_forms := {
+var long_forms: Dictionary[StringName, StringName] = {
 	# If missing here, we fallback to 'short_forms', then the unit StringName
 	# itself.
 	#
@@ -197,7 +197,7 @@ var long_forms := {
 	&"T" : &"TXT_TESLAS",
 }
 
-var short_forms := {
+var short_forms: Dictionary[StringName, String] = {
 	# If missing here, we fallback to the unit StringName itself (that's
 	# usually what we want: 'km', 'km/s', etc.).
 	&"deg" : "\u00B0",
@@ -209,7 +209,7 @@ var short_forms := {
 	&"_g" : "g", # reused symbol ('_g' is the unit name; 'g' is GUI display)
 }
 
-var skip_space := {
+var skip_space: Dictionary[StringName, bool] = {
 	# No space before short_forms or StringName (e.g., degrees symbol).
 	&"deg" : true,
 	&"deg/d" : true,
