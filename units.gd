@@ -21,7 +21,7 @@ extends Node
 
 ## Template file for IVUnits singleton
 ##
-## This node is added as singleton 'IVUnits'. You can replace this singleton by
+## This node is added as singleton "IVUnits". You can replace this singleton by
 ## creating an override config file in your project directory
 ## res://ivoyager_override.cfg (if it doesn't already exist), with these lines:
 ## [codeblock]
@@ -32,9 +32,14 @@ extends Node
 ##
 ## [/codeblock]
 ##
-## You can add to dictionaries 'unit_multipliers' & 'unit_lambdas' here.
-## However, if you need different base units or derived unit constants, we
-## suggest you replace this singleton as outlined above.
+## You can add to or modify dictionaries [member unit_multipliers] and
+## [member unit_lambdas] here. However, if you need different base units or
+## derived unit constants, we suggest you replace this singleton as outlined
+## above.[br][br]
+##
+## Note: Unit StringName keys are usually the standard SI abbreviation, but not
+## always. Display unit abbreviation (if different) and long-form unit names
+## are defined in [IVQFormat].
 
 
 # SI base units
@@ -86,6 +91,7 @@ const GRAVITATIONAL_CONSTANT := 6.67430e-11 * METER ** 3 / (KG * SECOND ** 2)
 #
 # We look for unit symbol first in unit_multipliers and then in unit_lambdas.
 
+## Conversion multipliers for units that are linear with zero-intersect.
 var unit_multipliers: Dictionary[StringName, float] = {
 	# Duplicated symbols have leading underscore.
 	# See IVQFormat for unit display strings.
@@ -202,6 +208,8 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	&"TiB" : 8.0 * 1024.0 ** 4,
 }
 
+## Conversion lambdas for units that are nonlinear or have non-zero intersect,
+## e.g., celsius and fahrenheit.
 var unit_lambdas: Dictionary[StringName, Callable] = {
 	&"degC" : func convert_celsius(x: float, to_internal := true) -> float:
 		return x + 273.15 if to_internal else x - 273.15,
