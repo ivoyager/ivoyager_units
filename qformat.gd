@@ -210,7 +210,7 @@ var short_forms: Dictionary[StringName, String] = {
 }
 
 var skip_space: Dictionary[StringName, bool] = {
-	# No space before short_forms or StringName (e.g., degrees symbol).
+	# No space before short_forms or StringName (possibly only degrees symbol).
 	&"deg" : true,
 	&"deg/d" : true,
 	&"deg/a" : true,
@@ -342,7 +342,7 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 	if precision_rounded == 10.0: # prevent '10.00e3' after rounding
 		x /= 10.0
 		pow10 += 1
-	return "%.*f%s%s" % [precision - 1, x, exponent_str, pow10] # e.g., '5.55e5'
+	return "%.*f%s%.f" % [precision - 1, x, exponent_str, pow10] # e.g., '5.55e5'
 
 
 func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE
