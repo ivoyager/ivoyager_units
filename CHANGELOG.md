@@ -8,6 +8,10 @@ File format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 Developed using Godot 4.4.1.
 
+### Changed
+
+* Display approximate value with prepend "~" when precision == 0. E.g., "~1 km".
+
 ### Fixed
 
 * Scientific notation exponent no longer shows ".0". This was causeded by Godot str(float) change.

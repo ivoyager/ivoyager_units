@@ -295,21 +295,26 @@ func dynamic_unit(x: float, dynamic_unit_type: DynamicUnitType, precision := 3,
 	return str(x)
 
 
+## precision == 0 displays 1 significant digit with a prepended "~". E.g., "~1 km".
+## precision < 0 displays float using Godot str(float) with no processing.
 func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> String:
-	# precision <= 0 displays "as is" regardless of number_type. This will often
-	# show inappropriately large precision if there have been unit conversions.
 	
-	if precision <= 0:
+	if precision < 0:
 		return (str(x))
+	
+	var prepend := ""
+	if precision == 0:
+		prepend = "~"
+		precision = 1
 		
 	# specified decimal places
 	if number_type == NumberType.DECIMAL_PLACES:
-		return ("%.*f" % [precision, x])
+		return ("%s%.*f" % [prepend, precision, x])
 	
 	# All below use significant digits, not decimal places!
 	# handle 0.0 case
 	if x == 0.0: # don't do '0.00e0' even if NUM_SCIENTIFIC
-		return "%.*f" % [precision - 1, 0.0] # e.g., '0.00' for precision 3
+		return "%s%.*f" % [prepend, precision - 1, 0.0] # e.g., '0.00' for precision 3
 		
 	var abs_x := absf(x)
 	var pow10 := floorf(log(abs_x) / LOG_OF_10)
@@ -318,21 +323,21 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 	if number_type == NumberType.PRECISION:
 		var decimal_pl := precision - int(pow10) - 1
 		if decimal_pl > 0:
-			return "%.*f" % [decimal_pl, x] # e.g., '0.0555'
+			return "%s%.*f" % [prepend, decimal_pl, x] # e.g., '0.0555'
 		if decimal_pl == 0:
-			return "%.f" % x # whole number, '555'
+			return "%s%.f" % [prepend, x] # whole number, '555'
 		else: # remove over-precision
 			divisor = pow(10.0, -decimal_pl)
 			x = round(x / divisor)
-			return str(x * divisor) # '555000'
+			return "%s%.f" % [prepend, x * divisor] # '555000'
 	
 	# handle 0.01 - 99999 for NUM_DYNAMIC
 	if number_type == NumberType.DYNAMIC and abs_x < 99999.5 and abs_x > 0.01:
 		var decimal_pl := precision - int(pow10) - 1
 		if decimal_pl > 0:
-			return "%.*f" % [decimal_pl, x] # e.g., '0.0555'
+			return "%s%.*f" % [prepend, decimal_pl, x] # e.g., '0.0555'
 		else:
-			return "%.f" % x # whole number, allow over-precision
+			return "%s%.f" % [prepend, x] # whole number, allow over-precision
 	
 	# scientific
 	divisor = pow(10.0, pow10)
@@ -342,7 +347,7 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 	if precision_rounded == 10.0: # prevent '10.00e3' after rounding
 		x /= 10.0
 		pow10 += 1
-	return "%.*f%s%.f" % [precision - 1, x, exponent_str, pow10] # e.g., '5.55e5'
+	return "%s%.*f%s%.f" % [prepend, precision - 1, x, exponent_str, pow10] # e.g., '5.55e5'
 
 
 func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE
