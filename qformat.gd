@@ -27,21 +27,23 @@ extends Node
 ## text/unit_numbers_text.en.translation to your Project.
 
 
+## Defines unit symbol usage and text case. Note that case is never altered in
+## unit symbols.
 enum TextFormat {
 	# Note: We don't alter case in unit symbols!
-	SHORT_MIXED_CASE, # '1.00 Million', '1.00 kHz'
-	SHORT_UPPER_CASE, # '1.00 MILLION', '1.00 kHz'
-	SHORT_LOWER_CASE, # '1.00 million', '1.00 kHz'
-	LONG_MIXED_CASE, # '1.00 Million', '1.00 Kilohertz'
-	LONG_UPPER_CASE, # '1.00 MILLION', '1.00 KILOHERTZ'
-	LONG_LOWER_CASE, # '1.00 million', '1.00 kilohertz'
+	SHORT_MIXED_CASE, ## '1.00 Million', '1.00 kHz'
+	SHORT_UPPER_CASE, ## '1.00 MILLION', '1.00 kHz'
+	SHORT_LOWER_CASE, ## '1.00 million', '1.00 kHz'
+	LONG_MIXED_CASE, ## '1.00 Million', '1.00 Kilohertz'
+	LONG_UPPER_CASE, ## '1.00 MILLION', '1.00 KILOHERTZ'
+	LONG_LOWER_CASE, ## '1.00 million', '1.00 kilohertz'
 }
 
 enum NumberType {
-	DYNAMIC, # 0.01 to 99999 as non-scientific, otherwise scientific
-	SCIENTIFIC, # always scientific using precision as significant digits
-	PRECISION, # e.g., precision = 3 -> '12300' (forces zeros), '1.23', '0.0000123'
-	DECIMAL_PLACES, # use 'precision' for decimal places rather than significant digits
+	DYNAMIC, ## 0.01 to 99999 as non-scientific, otherwise scientific
+	SCIENTIFIC, ## always scientific using precision as significant digits
+	PRECISION, ## e.g., precision = 3 -> '12300' (forces zeros), '1.23', '0.0000123'
+	DECIMAL_PLACES, ## use 'precision' for decimal places rather than significant digits
 }
 
 enum DynamicUnitType {
@@ -299,6 +301,9 @@ func dynamic_unit(x: float, dynamic_unit_type: DynamicUnitType, precision := 3,
 ## precision < 0 displays float using Godot str(float) with no processing.
 func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> String:
 	
+	if is_nan(x):
+		return ""
+	
 	if precision < 0:
 		return (str(x))
 	
@@ -353,6 +358,10 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE
 		) -> String:
 	# Returns integer string up to '999999', then '1.00 Million', etc.
+	
+	if is_nan(x):
+		return ""
+	
 	if abs(x) < 1e6:
 		return "%.f" % x
 	var exp_3s_index := floori(log(absf(x)) / (LOG_OF_10 * 3.0))
@@ -376,18 +385,16 @@ func modified_named_number(x: float, precision := 3, text_format := TextFormat.S
 		prefix := "", suffix := "", multiplier := 1.0) -> String:
 	# Same as named_number() but add prefix and/or suffix & apply
 	# multiplier: e.g., '$1.00 Billion', '1.00 Million Species', etc.
+	if is_nan(x):
+		return ""
 	return prefix + named_number(x * multiplier, precision, text_format) + suffix
-
-
-func prefixed_named_number(x: float, prefix: String, precision := 3,
-		text_format := TextFormat.SHORT_MIXED_CASE, multiplier := 1.0) -> String:
-	# DEPRECIATE: Use modified_named_number()
-	return prefix + named_number(x * multiplier, precision, text_format)
 
 
 func fixed_unit(x: float, unit: StringName, precision := 3,
 		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
 	# Use for fixed unit irrespective of value, e.g., '5.97e24 kg'.
+	if is_nan(x):
+		return ""
 	
 	x = IVQConvert.convert_quantity(x, unit, false, false)
 	var number_str := number(x, precision, number_type)
@@ -423,6 +430,8 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 	# The result will look weird and/or be wrong (eg, 1000 m^3 -> 1.00 km^3).
 	# unit == &"" ok; otherwise, unit must be in multipliers or lamdas dicts
 	# in IVQConvert.
+	if is_nan(x):
+		return ""
 	if unit:
 		x = IVQConvert.convert_quantity(x, unit, false, false)
 	var exp_3s_index := 0
