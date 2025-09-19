@@ -61,6 +61,7 @@ enum DynamicUnitType {
 	MASS_RATE_G_KG_PREFIXED_T_PER_D, # g/d, kg/d, t/d, kt/d, Mt/d, Gt/d, etc.
 	# time
 	TIME_D_Y, # d if < 1000 d, else y
+	TIME_H_D_Y, # h if < 24 h, d if < 1000 d, else y
 	# velocity
 	VELOCITY_MPS_KMPS, # km/s if >= 1.0 km/s
 	VELOCITY_MPS_KMPS_C, # km/s if >= 1.0 km/s; c if >= 0.1 c
@@ -236,23 +237,23 @@ func dynamic_unit(x: float, dynamic_unit_type: DynamicUnitType, precision := 3,
 		DynamicUnitType.LENGTH_M_KM_AU:
 			if x < IVUnits.KM:
 				return fixed_unit(x, &"m", precision, number_type, text_format)
-			elif x < 0.1 * IVUnits.AU:
+			if x < 0.1 * IVUnits.AU:
 				return fixed_unit(x, &"km", precision, number_type, text_format)
 			return fixed_unit(x, &"au", precision, number_type, text_format)
 		DynamicUnitType.LENGTH_M_KM_AU_LY:
 			if x < IVUnits.KM:
 				return fixed_unit(x, &"m", precision, number_type, text_format)
-			elif x < 0.1 * IVUnits.AU:
+			if x < 0.1 * IVUnits.AU:
 				return fixed_unit(x, &"km", precision, number_type, text_format)
-			elif x < 0.1 * IVUnits.LIGHT_YEAR:
+			if x < 0.1 * IVUnits.LIGHT_YEAR:
 				return fixed_unit(x, &"au", precision, number_type, text_format)
 			return fixed_unit(x, &"ly", precision, number_type, text_format)
 		DynamicUnitType.LENGTH_M_KM_AU_PREFIXED_PARSEC:
 			if x < IVUnits.KM:
 				return fixed_unit(x, &"m", precision, number_type, text_format)
-			elif x < 0.1 * IVUnits.AU:
+			if x < 0.1 * IVUnits.AU:
 				return fixed_unit(x, &"km", precision, number_type, text_format)
-			elif x < 0.1 * IVUnits.PARSEC:
+			if x < 0.1 * IVUnits.PARSEC:
 				return fixed_unit(x, &"au", precision, number_type, text_format)
 			return prefixed_unit(x, &"pc", precision, number_type, text_format)
 		DynamicUnitType.MASS_G_KG: # g if < 1.0 kg
@@ -262,26 +263,31 @@ func dynamic_unit(x: float, dynamic_unit_type: DynamicUnitType, precision := 3,
 		DynamicUnitType.MASS_G_KG_T: # g if < 1.0 kg; t if x >= 1000.0 kg 
 			if x < IVUnits.KG:
 				return fixed_unit(x, &"g", precision, number_type, text_format)
-			elif x < IVUnits.TONNE:
+			if x < IVUnits.TONNE:
 				return fixed_unit(x, &"kg", precision, number_type, text_format)
 			return fixed_unit(x, &"t", precision, number_type, text_format)
 		DynamicUnitType.MASS_G_KG_PREFIXED_T: # g, kg, t, kt, Mt, Gt, Tt, etc.
 			if x < IVUnits.KG:
 				return fixed_unit(x, &"g", precision, number_type, text_format)
-			elif x < IVUnits.TONNE:
+			if x < IVUnits.TONNE:
 				return fixed_unit(x, &"kg", precision, number_type, text_format)
 			return prefixed_unit(x, &"t", precision, number_type, text_format)
 		DynamicUnitType.MASS_RATE_G_KG_PREFIXED_T_PER_D: # g/d, kg/d, t/d, kt/d, Mt/d, Gt/d, etc.
 			if x < IVUnits.KG / IVUnits.DAY:
 				return fixed_unit(x, &"g/d", precision, number_type, text_format)
-			elif x < IVUnits.TONNE / IVUnits.DAY:
+			if x < IVUnits.TONNE / IVUnits.DAY:
 				return fixed_unit(x, &"kg/d", precision, number_type, text_format)
 			return prefixed_unit(x, &"t/d", precision, number_type, text_format)
 		DynamicUnitType.TIME_D_Y:
 			if x <= 1000.0 * IVUnits.DAY:
 				return fixed_unit(x, &"d", precision, number_type, text_format)
-			else:
-				return fixed_unit(x, &"y", precision, number_type, text_format)
+			return fixed_unit(x, &"y", precision, number_type, text_format)
+		DynamicUnitType.TIME_H_D_Y:
+			if x < 24.0 * IVUnits.HOUR:
+				return fixed_unit(x, &"h", precision, number_type, text_format)
+			if x <= 1000.0 * IVUnits.DAY:
+				return fixed_unit(x, &"d", precision, number_type, text_format)
+			return fixed_unit(x, &"y", precision, number_type, text_format)
 		DynamicUnitType.VELOCITY_MPS_KMPS: # km/s if >= 1.0 km/s
 			if x < IVUnits.KM / IVUnits.SECOND:
 				return fixed_unit(x, &"m/s", precision, number_type, text_format)
@@ -289,7 +295,7 @@ func dynamic_unit(x: float, dynamic_unit_type: DynamicUnitType, precision := 3,
 		DynamicUnitType.VELOCITY_MPS_KMPS_C: # c if >= 0.1 c
 			if x < IVUnits.KM / IVUnits.SECOND:
 				return fixed_unit(x, &"m/s", precision, number_type, text_format)
-			elif x < 0.1 * IVUnits.SPEED_OF_LIGHT:
+			if x < 0.1 * IVUnits.SPEED_OF_LIGHT:
 				return fixed_unit(x, &"c", precision, number_type, text_format)
 			return fixed_unit(x, &"km/s", precision, number_type, text_format)
 			
