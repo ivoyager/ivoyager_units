@@ -520,7 +520,7 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 	if is_nan(x):
 		return ""
 	
-	x = IVQConvert.convert_quantity(x, unit, false, false)
+	x = IVQConvert.externalize_quantity(x, unit)
 	var number_str := number(x, precision, number_type)
 	
 	var unit_str: String
@@ -546,21 +546,21 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 
 ## Returns a formatted quantity string with a dynamically prefixed unit. 
 ## The quantity number will be formatted as in [method number].
+## Example results with unit == 't': '5.00 Gt' or '5.00 Gigatonnes',
+## depending on text_format.
+## WARNING: Don't try to prefix an already-prefixed unit (e.g., 'km') or any
+## composite unit where the first unit has a power other than 1 (eg, 'm^3').
+## The result will look weird and/or be wrong (eg, 1000 m^3 -> 1.00 km^3).
+## unit == &"" ok; otherwise, unit must be in multipliers or lamdas dicts
+## in IVQConvert.
 func prefixed_unit(x: float, unit: StringName, precision := 3,
 		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	# Example results with unit == 't': '5.00 Gt' or '5.00 Gigatonnes',
-	# depending on text_format.
-	# WARNING: Don't try to prefix an already-prefixed unit (e.g., 'km') or any
-	# composite unit where the first unit has a power other than 1 (eg, 'm^3').
-	# The result will look weird and/or be wrong (eg, 1000 m^3 -> 1.00 km^3).
-	# unit == &"" ok; otherwise, unit must be in multipliers or lamdas dicts
-	# in IVQConvert.
 	const LOG_OF_10 := log(10.0)
 	
 	if is_nan(x):
 		return ""
 	if unit:
-		x = IVQConvert.convert_quantity(x, unit, false, false)
+		x = IVQConvert.externalize_quantity(x, unit)
 	var exp_3s_index := 0
 	if x != 0.0:
 		exp_3s_index = floori(log(absf(x)) / (LOG_OF_10 * 3.0))

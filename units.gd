@@ -82,20 +82,12 @@ const WEBER := VOLT * SECOND
 const TESLA := WEBER / METER ** 2
 const GRAVITATIONAL_CONSTANT := 6.67430e-11 * METER ** 3 / (KG * SECOND ** 2)
 
-# Unit symbols below mostly follow:
-# https://en.wikipedia.org/wiki/International_System_of_Units
-#
-# IVConvert.convert_quantity() can convert compound units such as 'm/s^2'.
-# However, dictionary lookup is faster so consider adding commonly used
-# compound units as keys in unit_multipliers. 
-#
-# We look for unit symbol first in unit_multipliers and then in unit_lambdas.
+
 
 ## Conversion multipliers for units that are linear with zero-intersect.
+## Default units are mostly (but not all) SI units that follow:
+## https://en.wikipedia.org/wiki/International_System_of_Units
 var unit_multipliers: Dictionary[StringName, float] = {
-	# Duplicated symbols have leading underscore.
-	# See IVQFormat for unit display strings.
-	
 	# time
 	&"s" : SECOND,
 	&"min" : MINUTE,

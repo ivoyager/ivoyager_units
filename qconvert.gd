@@ -28,25 +28,25 @@ extends Node
 ## Methods can parse compound units such as "m/s^2" assuming relevant simple
 ## units (e.g., "m" and "s") are present in [member unit_multipliers]. See
 ## [method get_parsed_unit_multiplier] for parsing details. When calling 
-## [method convert_quantity], parsed compound units are memoized for faster
-## subsequent usage. 
+## [method internalize_quantity] or [method externalize_quantity], parsed
+## compound units are memoized for fast subsequent usage. 
 
-const DPRINT := false
 
 var unit_multipliers: Dictionary[StringName, float] = IVUnits.unit_multipliers
 var unit_lambdas: Dictionary[StringName, Callable] = IVUnits.unit_lambdas
 
 
-## Tests whether [param unit] is valid for [method convert_quantity].
+## Tests whether [param unit] is valid for [method internalize_quantity] or
+## [method externalize_quantity].
 func is_valid_unit(unit: StringName, parse_compound_unit := false) -> bool:
-	return !is_nan(convert_quantity(1.0, unit, true, parse_compound_unit, false))
+	return !is_nan(internalize_quantity(1.0, unit, parse_compound_unit, false))
 
 
-## Converts [param x] in specified [param unit] to internal value (or from
-## internal value if [param to_internal] == false). Will attempt to parse
-## [param unit] if [param parse_compound_unit] == true. Throws an error if
-## [param unit] is not present in conversion dictionaries or it can't be parsed
-## (or returns NAN if [param assert_error] == false).[br][br]
+## Converts quantity [param x] in specified [param unit] to internal units as specified
+## by [member unit_multipliers] and [member unit_lambdas]. Will attempt to parse
+## a compound [param unit] if [param parse_compound_unit] == true. Throws an error if
+## [param unit] is not present in conversion dictionaries or can't be parsed,
+## or returns NAN if [param assert_error] == false.[br][br]
 ##
 ## If [param unit] is in [member unit_multipliers] or [member unit_lambdas],
 ## then no parsing is attempted. Dictionary [member unit_multipliers] may have
@@ -57,6 +57,47 @@ func is_valid_unit(unit: StringName, parse_compound_unit := false) -> bool:
 ## as a key-value pair for subsequent lookup.[br][br]
 ##
 ## See parsing comments in [method get_parsed_unit_multiplier].
+func internalize_quantity(x: float, unit: StringName, parse_compound_unit := true,
+		assert_error := true) -> float:
+	if !unit:
+		return x
+	var multiplier: float = unit_multipliers.get(unit, 0.0)
+	if multiplier:
+		return x * multiplier
+	if unit_lambdas.has(unit):
+		var lambda := unit_lambdas[unit]
+		return lambda.call(x, true)
+	if !parse_compound_unit:
+		assert(!assert_error, "'%s' is not in unit_multipliers or unit_lambdas" % unit)
+		return NAN
+	multiplier = get_parsed_unit_multiplier(unit, assert_error)
+	unit_multipliers[unit] = multiplier # memoize!
+	return x * multiplier
+
+
+## Inverse of [method internalize_quantity]. Converts an internal quantity [param x]
+## to an external quantity (e.g., for GUI display) in specified [param unit].
+## Additional args are as in [method internalize_quantity].
+func externalize_quantity(x: float, unit: StringName, parse_compound_unit := true,
+		assert_error := true) -> float:
+	if !unit:
+		return x
+	var multiplier: float = unit_multipliers.get(unit, 0.0)
+	if multiplier:
+		return x / multiplier
+	if unit_lambdas.has(unit):
+		var lambda := unit_lambdas[unit]
+		return lambda.call(x, false)
+	if !parse_compound_unit:
+		assert(!assert_error, "'%s' is not in unit_multipliers or unit_lambdas" % unit)
+		return NAN
+	multiplier = get_parsed_unit_multiplier(unit, assert_error)
+	unit_multipliers[unit] = multiplier # memoize!
+	return x / multiplier
+
+
+
+## @depricate
 func convert_quantity(x: float, unit: StringName, to_internal := true,
 		parse_compound_unit := true, assert_error := true) -> float:
 	if !unit:
@@ -105,9 +146,8 @@ func convert_quantity(x: float, unit: StringName, to_internal := true,
 ##   5. Each parenthesis opening "(" must have a closing ")".
 func get_parsed_unit_multiplier(unit_str: String, assert_error := true) -> float:
 	
-	# debug print unit strings & substrings
-	if DPRINT:
-		print(unit_str)
+	# debug print unit strings & substrings at each recursion
+	# print(unit_str)
 	
 	if !unit_str:
 		assert(!assert_error, "Empty unit string or substring. This could be caused by a"
