@@ -19,9 +19,17 @@
 # *****************************************************************************
 extends Node
 
-## This node is added as singleton "IVQConvert"
+## Singleton "IVQConvert" provides API for conversion of quantities to or from
+## internal units.
 ##
-## Converts float quantities to or from internal units.
+## Dictionaries [member unit_multipliers] and [member unit_lambdas] must be
+## specified if different than [IVUnits] dictionaries.[br][br]
+##
+## Methods can parse compound units such as "m/s^2" assuming relevant simple
+## units (e.g., "m" and "s") are present in [member unit_multipliers]. See
+## [method get_parsed_unit_multiplier] for parsing details. When calling 
+## [method convert_quantity], parsed compound units are memoized for faster
+## subsequent usage. 
 
 const DPRINT := false
 
@@ -29,30 +37,28 @@ var unit_multipliers: Dictionary[StringName, float] = IVUnits.unit_multipliers
 var unit_lambdas: Dictionary[StringName, Callable] = IVUnits.unit_lambdas
 
 
-
+## Tests whether [param unit] is valid for [method convert_quantity].
 func is_valid_unit(unit: StringName, parse_compound_unit := false) -> bool:
-	# Tests whether 'unit' string is valid for convert_quantity().
 	return !is_nan(convert_quantity(1.0, unit, true, parse_compound_unit, false))
 
 
+## Converts [param x] in specified [param unit] to internal value (or from
+## internal value if [param to_internal] == false). Will attempt to parse
+## [param unit] if [param parse_compound_unit] == true. Throws an error if
+## [param unit] is not present in conversion dictionaries or it can't be parsed
+## (or returns NAN if [param assert_error] == false).[br][br]
+##
+## If [param unit] is in [member unit_multipliers] or [member unit_lambdas],
+## then no parsing is attempted. Dictionary [member unit_multipliers] may have
+## compound units like "m/s^2" pre-added for quick lookup without parsing.[br][br]
+##
+## If a compound unit string is successfully parsed, then the compound unit name
+## and resulting multiplier will be memoized by added to [member unit_multipliers]
+## as a key-value pair for subsequent lookup.[br][br]
+##
+## See parsing comments in [method get_parsed_unit_multiplier].
 func convert_quantity(x: float, unit: StringName, to_internal := true,
 		parse_compound_unit := true, assert_error := true) -> float:
-	# Converts 'x' in specified 'unit' to internal float value, or from
-	# internal value if to_internal == false. Will attempt to parse the 'unit'
-	# string if parse_compound_unit == true. Throws an error if 'unit' is not
-	# present in conversion dictionaries or it can't be parsed, or returns NAN
-	# if assert_error == false.
-	#
-	# If 'unit' is in 'unit_multipliers' or 'unit_lambdas', then no parsing is
-	# attempted. Dictionary 'unit_multipliers' can have compound units like
-	# 'm/s^2' for quick lookup without parsing.
-	#
-	# If a unit string is parsed, then the unit name and multiplier will be
-	# added to 'unit_multipliers' as a key-value pair. This greately speeds up
-	# subsequent usage and makes the unit string directly accessible in the 
-	# dictionary (e.g., by GUI).
-	#
-	# See parsing comments in get_parsed_unit_multiplier().
 	if !unit:
 		return x
 	
@@ -76,34 +82,28 @@ func convert_quantity(x: float, unit: StringName, to_internal := true,
 	return x * multiplier if to_internal else x / multiplier
 
 
-func get_parsed_unit_multiplier(unit_str: String, assert_error: bool) -> float:
-	# Parsing isn't super fast. But once encountered by convert_quantity(), the
-	# unit name will be added to the 'unit_multipliers' dictionary for quick
-	# subsequent usage.
-	#
-	# Parser rules:
-	#
-	#   1. The compound unit string must be composed only of valid multiplier
-	#      units (i.e., in 'unit_multiplier' dictionary), valid float numbers,
-	#      unit operators, and parentheses '(' and ')'.
-	#   2. Allowed unit operatiors are "^", "/", and " ", corresponding to
-	#      exponentiation, division and multiplication, in that order of
-	#      precidence.
-	#   3. Operators must have a valid non-operator substring on each side
-	#      without adjacent spaces. Spaces are ONLY allowed as multiplication
-	#      operators.
-	#   4. Each parenthesis opening '(' must have a closing ')'.
-	#
-	# Example valid unit strings for parsing:
-	#
-	#   m/s^2
-	#   m^3/(kg s^2)
-	#   1e24
-	#   10^24
-	#   10^24 kg
-	#   1/d
-	#   d^-1
-	#   m^0.5
+## Parses compound unit strings. Valid examples include "m/s^2", "m^3/(kg s^2)",
+## "1e24", "10^24", "10^24 kg", "1/d", "d^-1" and "m^0.5" (assuming that
+## "m", "kg", "s", and "d" are present in [member unit_multipliers]).[br][br]
+##
+## Does NOT attempt to parse unit prefixes such as "k" in "km" ("km"
+## would have to be present in [member unit_multipliers] to use).[br][br]
+##
+## Throws an error if [param unit_str] can't be parsed (or returns NAN if
+## [param assert_error] == false).[br][br]
+##
+## Parser rules:[br][br]
+##
+##   1. The compound unit string must be composed only of valid multiplier
+##      units (i.e., keys in [member unit_multipliers]), valid float numbers,
+##      unit operators, and opening and closing parentheses: "(", ")".[br]
+##   2. Allowed unit operatiors are "^", "/", and " ", corresponding to
+##      exponentiation, division and multiplication, in that order of precedence.[br]
+##   3. Spaces are ONLY allowed as multiplication operators![br]
+##   4. Operators must have a valid non-operator substring on each side without
+##      adjacent spaces.[br]
+##   5. Each parenthesis opening "(" must have a closing ")".
+func get_parsed_unit_multiplier(unit_str: String, assert_error := true) -> float:
 	
 	# debug print unit strings & substrings
 	if DPRINT:
