@@ -594,86 +594,91 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 	return number_str + unit_str
 
 
-## Returns a latitude-longitude string in format specified by [param lat_long_type].
+## Returns a latitude-longitude string in format specified by [param lat_lon_type].
 ## See [member LatitudeLongitudeType]. Assumes internal use of radians.
-func latitude_longitude(lat_long: Vector2, decimal_pl := 0,
-		lat_long_type := LatitudeLongitudeType.N_S_E_W, text_format := TextFormat.SHORT_MIXED_CASE
+func latitude_longitude(lat_lon: Vector2, decimal_pl := 0,
+		lat_lon_type := LatitudeLongitudeType.N_S_E_W, text_format := TextFormat.SHORT_MIXED_CASE
 		) -> String:
-	return (latitude(lat_long[0], decimal_pl, lat_long_type, text_format) + " "
-			+ longitude(lat_long[1], decimal_pl, lat_long_type, text_format))
+	return (latitude(lat_lon[0], decimal_pl, lat_lon_type, text_format) + " "
+			+ longitude(lat_lon[1], decimal_pl, lat_lon_type, text_format))
 
 
-## Returns a latitude string in format specified by [param lat_long_type].
+## Returns a latitude string in format specified by [param lat_lon_type].
 ## See [member LatitudeLongitudeType]. Assumes internal use of radians.
-func latitude(x: float, decimal_pl := 0, lat_long_type := LatitudeLongitudeType.N_S_E_W,
+func latitude(x: float, decimal_pl := 0, lat_lon_type := LatitudeLongitudeType.N_S_E_W,
 		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
+	const N_S_E_W := LatitudeLongitudeType.N_S_E_W
+	const LAT_LONG := LatitudeLongitudeType.LAT_LONG
+	const SHORT_MIXED_CASE := TextFormat.SHORT_MIXED_CASE
+	const SHORT_UPPER_CASE := TextFormat.SHORT_UPPER_CASE
+	const SHORT_LOWER_CASE := TextFormat.SHORT_LOWER_CASE
+	const LONG_UPPER_CASE := TextFormat.LONG_UPPER_CASE
+	const LONG_LOWER_CASE := TextFormat.LONG_LOWER_CASE
+	const SHORT_FORMS: Array[TextFormat] = [SHORT_MIXED_CASE, SHORT_UPPER_CASE, SHORT_LOWER_CASE]
 	
 	x = rad_to_deg(x)
-	x = wrapf(x, -180.0, 180.0)
 	
-	var long_form := false
-	match text_format:
-		TextFormat.LONG_MIXED_CASE, TextFormat.LONG_UPPER_CASE, TextFormat.LONG_LOWER_CASE:
-			long_form = true
-	
+	var short_form := SHORT_FORMS.has(text_format)
 	var suffix: String
-	if lat_long_type == LatitudeLongitudeType.N_S_E_W:
+	if lat_lon_type == N_S_E_W:
 		if x > -0.0001: # prefer N if nearly 0 after conversion
-			suffix = _tr[&"TXT_NORTH"] if long_form else _tr[&"TXT_NORTH_SHORT"]
+			suffix = _tr[&"TXT_NORTH_SHORT"] if short_form else _tr[&"TXT_NORTH"]
 		else:
-			suffix = _tr[&"TXT_SOUTH"] if long_form else _tr[&"TXT_SOUTH_SHORT"]
+			suffix = _tr[&"TXT_SOUTH_SHORT"] if short_form else _tr[&"TXT_SOUTH"]
 		x = abs(x)
-	elif lat_long_type == LatitudeLongitudeType.LAT_LONG:
-		suffix = _tr[&"TXT_LATITUDE"] if long_form else _tr[&"TXT_LATITUDE_SHORT"]
+	elif lat_lon_type == LAT_LONG:
+		suffix = _tr[&"TXT_LATITUDE_SHORT"] if short_form else _tr[&"TXT_LATITUDE"]
 	else: # PITCH_YAW
 		suffix = _tr[&"TXT_PITCH"]
 	
 	match text_format:
-		TextFormat.LONG_UPPER_CASE, TextFormat.SHORT_UPPER_CASE:
+		LONG_UPPER_CASE, SHORT_UPPER_CASE:
 			suffix = suffix.to_upper()
-		TextFormat.LONG_LOWER_CASE:
+		LONG_LOWER_CASE:
 			suffix = suffix.to_lower()
-		TextFormat.SHORT_LOWER_CASE:
-			if lat_long_type != LatitudeLongitudeType.N_S_E_W: # don't lower case N, S
+		SHORT_LOWER_CASE:
+			if lat_lon_type != N_S_E_W: # don't lower case N, S
 				suffix = suffix.to_lower()
 	
 	return "%.*f\u00B0 %s" % [decimal_pl, x, suffix]
 
 
-## Returns a longitude string in format specified by [param lat_long_type].
+## Returns a longitude string in format specified by [param lat_lon_type].
 ## See [member LatitudeLongitudeType]. Assumes internal use of radians.
-func longitude(x: float, decimal_pl := 0, lat_long_type := LatitudeLongitudeType.N_S_E_W,
+func longitude(x: float, decimal_pl := 0, lat_lon_type := LatitudeLongitudeType.N_S_E_W,
 		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
+	const N_S_E_W := LatitudeLongitudeType.N_S_E_W
+	const LAT_LONG := LatitudeLongitudeType.LAT_LONG
+	const SHORT_MIXED_CASE := TextFormat.SHORT_MIXED_CASE
+	const SHORT_UPPER_CASE := TextFormat.SHORT_UPPER_CASE
+	const SHORT_LOWER_CASE := TextFormat.SHORT_LOWER_CASE
+	const LONG_UPPER_CASE := TextFormat.LONG_UPPER_CASE
+	const LONG_LOWER_CASE := TextFormat.LONG_LOWER_CASE
+	const SHORT_FORMS: Array[TextFormat] = [SHORT_MIXED_CASE, SHORT_UPPER_CASE, SHORT_LOWER_CASE]
 	
 	x = rad_to_deg(x)
 	
-	var long_form := false
-	match text_format:
-		TextFormat.LONG_MIXED_CASE, TextFormat.LONG_UPPER_CASE, TextFormat.LONG_LOWER_CASE:
-			long_form = true
-	
+	var short_form := SHORT_FORMS.has(text_format)
 	var suffix: String
-	if lat_long_type == LatitudeLongitudeType.N_S_E_W:
-		x = wrapf(x, -180.0, 180.0)
+	if lat_lon_type == N_S_E_W:
 		if x > -0.0001 and x < 179.9999: # nearly 0 is E; nearly 180 is W
-			suffix = _tr[&"TXT_EAST"] if long_form else _tr[&"TXT_EAST_SHORT"]
+			suffix = _tr[&"TXT_EAST_SHORT"] if short_form else _tr[&"TXT_EAST"]
 		else:
-			suffix = _tr[&"TXT_WEST"] if long_form else _tr[&"TXT_WEST_SHORT"]
+			suffix = _tr[&"TXT_WEST_SHORT"] if short_form else _tr[&"TXT_WEST"]
 		x = abs(x)
-	elif lat_long_type == LatitudeLongitudeType.LAT_LONG:
+	elif lat_lon_type == LAT_LONG:
 		x = wrapf(x, 0.0, 360.0)
-		suffix = _tr[&"TXT_LONGITUDE"] if long_form else _tr[&"TXT_LONGITUDE_SHORT"]
+		suffix = _tr[&"TXT_LONGITUDE_SHORT"] if short_form else _tr[&"TXT_LONGITUDE"]
 	else: # PITCH_YAW
-		x = wrapf(x, -180.0, 180.0)
 		suffix = _tr[&"TXT_YAW"]
 	
 	match text_format:
-		TextFormat.LONG_UPPER_CASE, TextFormat.SHORT_UPPER_CASE:
+		LONG_UPPER_CASE, SHORT_UPPER_CASE:
 			suffix = suffix.to_upper()
-		TextFormat.LONG_LOWER_CASE:
+		LONG_LOWER_CASE:
 			suffix = suffix.to_lower()
-		TextFormat.SHORT_LOWER_CASE:
-			if lat_long_type != LatitudeLongitudeType.N_S_E_W: # don't lower case E, W
+		SHORT_LOWER_CASE:
+			if lat_lon_type != LatitudeLongitudeType.N_S_E_W: # don't lower case E, W
 				suffix = suffix.to_lower()
 	
 	return "%.*f\u00B0 %s" % [decimal_pl, x, suffix]
