@@ -19,25 +19,26 @@
 # *****************************************************************************
 extends Node
 
-## Singleton "IVQFormat" provides methods for formatting numbers and unit quantities.
+## Singleton [IVQFormat] provides API for formatting numbers and unit quantities
+## for GUI display.
 ##
-## Methods here assume that the calling project uses consistant internal units
-## as specified in [IVUnits] or in replacement dictionaries (see [IVQConvert]).[br][br]
+## Methods here use [IVQConvert] API for unit conversions, which assumes (and
+## helps ensure) that the calling project uses consistant internal units.[br][br]
 ##
 ## If using named numbers or "long form" units, you'll need to add translations
 ## to your project. An Engligh translation is included in the plugin in file
-## ivoyaber_units/text/unit_numbers_text.en.translation.[br][br]
+## [code]ivoyaber_units/text/unit_numbers_text.en.translation[/code].[br][br]
 ##
-## This node "pre-translates" all text keys. If modifying any arrays or dictionaries
-## that contain text keys (or if changing language at runtime), be sure to call
-## [method retranslate] afterwards. The reason for this is that method tr() throws
-## an error if called on thread as of Godot 4.5. Pre-translation allows calling
-## all of the String return methods here on thread.
+## This node "pre-translates" all relevant text keys. If modifying any arrays or
+## dictionaries that contain text keys or if changing language at runtime, be
+## sure to call [method retranslate] afterwards. The reason for this is that
+## [method Object.tr] throws an error if called on thread (as of Godot 4.5).
+## Pre-translation allows calling all of the String return methods here on threads.
 
 
 
-## Defines unit symbol usage and text case. Note that case is never altered in
-## unit symbols.
+## Defines display of unit symbols (versus unit names) and text case. Note that
+## case is never altered in unit symbols.
 enum TextFormat {
 	# Note: We don't alter case in unit symbols!
 	SHORT_MIXED_CASE, ## Examples: "1.00 Million", "1.00 kHz".
@@ -48,8 +49,9 @@ enum TextFormat {
 	LONG_LOWER_CASE, ## Examples: "1.00 million", "1.00 kilohertz".
 }
 
-## Defines number format and method usage of [param precision]. Note that
-## [param precision] means significant digits except in the case of DECIMAL_PLACES.
+## Defines number format and the meaning of [param precision]. Note that
+## [param precision] means significant digits except in the case of
+## [member DECIMAL_PLACES].
 enum NumberType {
 	DYNAMIC, ## 0.01 to 99999 as non-scientific, otherwise scientific.
 	SCIENTIFIC, ## Always scientific using precision as significant digits.
@@ -66,7 +68,7 @@ enum LatitudeLongitudeType {
 
 
 
-## String for formatting scientific notation. E.g., set to " x 10^" for "9.99 x 10^9".
+## String for formatting scientific notation. E.g., set to " × 10^" for "9.99 × 10^9".
 var exponent_str := "e"
 
 ## 3rd magnitude prefixes (full names). If modifying, be sure to modify [member prefix_symbols]
@@ -85,7 +87,7 @@ var prefix_symbols: Array[String] = [ # e-30, ..., e30
 ## Update if changing those arrays.
 var prefix_offset := prefix_symbols.find("") # UPDATE if prefix_symbols changed!
 
-## 3rd magnitude number names, starting with 10e6.
+## 3rd magnitude number names as text keys, starting with 10e6.[br][br]
 ##
 ## IMPORTANT! Call [method retranslate] after modifying.
 var large_number_names: Array[StringName] = [
@@ -93,7 +95,7 @@ var large_number_names: Array[StringName] = [
 	&"TXT_SEXTILLION", &"TXT_SEPTILLION", &"TXT_OCTILLION", &"TXT_NONILLION", &"TXT_DECILLION"
 ] # e6, ..., e33
 
-## "Long form" unit names. If a unit is missing here, code will fallback to
+## "Long form" unit names as text keys. If a unit is missing here, code will fallback to
 ## [member short_forms] and then to the unit symbol itself.[br][br]
 ##
 ## Note that you can dynamically prefix any base unit (m, g, Hz, Wh, etc.)
@@ -154,7 +156,7 @@ var long_forms: Dictionary[StringName, StringName] = {
 	&"c" : &"TXT_SPEED_OF_LIGHT",
 	# acceleration/gravity
 	&"m/s^2" : &"TXT_METERS_PER_SECOND_SQUARED",
-	&"_g" : &"TXT_STANDARD_GRAVITIES",
+	&"g0" : &"TXT_STANDARD_GRAVITIES",
 	# angular velocity
 	&"deg/d" : &"TXT_DEGREES_PER_DAY",
 	&"deg/a" : &"TXT_DEGREES_PER_YEAR",
@@ -207,34 +209,136 @@ var short_forms: Dictionary[StringName, String] = {
 	&"deg/d" : "°/d",
 	&"deg/a" : "°/a",
 	&"deg/Cy" : "°/Cy",
-	&"_g" : "g", # reused symbol for gravitational force equivalent
+	&"g0" : "g", # reused symbol for gravitational force equivalent
 }
 
-## Symbols that should not be preceded by a space. Possibly only the ° symbol and derivatives.
-var skip_space: Dictionary[StringName, bool] = {
+## Symbols that should not be preceded by a space. Possibly only units that
+## display with the degree symbol (°) as first character.
+var unspaced_units: Dictionary[StringName, bool] = {
 	&"deg" : true,
 	&"deg/d" : true,
 	&"deg/a" : true,
 	&"deg/Cy" : true,
 }
 
-## Contains value format Callables that can be specified in [method dynamic_unit].
-## Callable elements can be added or replaced, but they must follow the same
-## method signature as [method length_m_km].
+## Contains quantity format Callables that can be specified in [method dynamic_unit].
+## Callables can be added or replaced, but must follow method signature
+## [code](x: float, precision: int, number_type: NumberType, text_format: TextFormat)[/code].
 var dynamic_unit_callables: Dictionary[StringName, Callable] = {
-	length_m_km = length_m_km,
-	length_km_au = length_km_au,
-	length_m_km_au = length_m_km_au,
-	length_m_km_au_ly = length_m_km_au_ly,
-	length_m_km_au_prefixed_parsec = length_m_km_au_prefixed_parsec,
-	mass_g_kg = mass_g_kg,
-	mass_g_kg_t = mass_g_kg_t,
-	mass_g_kg_prefixed_t = mass_g_kg_prefixed_t,
-	mass_rate_g_kg_prefixed_t_per_d = mass_rate_g_kg_prefixed_t_per_d,
-	time_d_y = time_d_y,
-	time_h_d_y = time_h_d_y,
-	velocity_mps_kmps = velocity_mps_kmps,
-	velocity_mps_kmps_c = velocity_mps_kmps_c,
+	
+	# m if < 1 km, else km
+	length_m_km = func length_m_km(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		if x < IVUnits.KM:
+			return fixed_unit(x, &"m", precision, number_type, text_format)
+		return fixed_unit(x, &"km", precision, number_type, text_format),
+	
+	# km if < 0.1 au, else au.
+	length_km_au = func length_km_au(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		if x < 0.1 * IVUnits.AU:
+			return fixed_unit(x, &"km", precision, number_type, text_format)
+		return fixed_unit(x, &"au", precision, number_type, text_format),
+	
+	# m if < 1 km, km if < 0.1 au, else au.
+	length_m_km_au = func length_m_km_au(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		if x < IVUnits.KM:
+			return fixed_unit(x, &"m", precision, number_type, text_format)
+		if x < 0.1 * IVUnits.AU:
+			return fixed_unit(x, &"km", precision, number_type, text_format)
+		return fixed_unit(x, &"au", precision, number_type, text_format),
+	
+	# m if < 1 km, km if < 0.1 au, au if < 0.1 ly, else ly.
+	length_m_km_au_ly = func length_m_km_au_ly(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		if x < IVUnits.KM:
+			return fixed_unit(x, &"m", precision, number_type, text_format)
+		if x < 0.1 * IVUnits.AU:
+			return fixed_unit(x, &"km", precision, number_type, text_format)
+		if x < 0.1 * IVUnits.LIGHT_YEAR:
+			return fixed_unit(x, &"au", precision, number_type, text_format)
+		return fixed_unit(x, &"ly", precision, number_type, text_format),
+	
+	# m if < 1 km, km if < 0.1 au, au if < 0.1 parsec, else pc, kpc, Mpc, Gpc, etc.
+	length_m_km_au_prefixed_pc = func length_m_km_au_prefixed_pc(x: float, precision: int,
+			number_type: NumberType, text_format: TextFormat) -> String:
+		if x < IVUnits.KM:
+			return fixed_unit(x, &"m", precision, number_type, text_format)
+		if x < 0.1 * IVUnits.AU:
+			return fixed_unit(x, &"km", precision, number_type, text_format)
+		if x < 0.1 * IVUnits.PARSEC:
+			return fixed_unit(x, &"au", precision, number_type, text_format)
+		return prefixed_unit(x, &"pc", precision, number_type, text_format),
+	
+	# g if < 1 kg, else kg.
+	mass_g_kg = func mass_g_kg(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		if x < IVUnits.KG:
+			return fixed_unit(x, &"g", precision, number_type, text_format)
+		return fixed_unit(x, &"kg", precision, number_type, text_format),
+	
+	# g if < 1 kg, kg if < 1 t, else t.
+	mass_g_kg_t = func mass_g_kg_t(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		if x < IVUnits.KG:
+			return fixed_unit(x, &"g", precision, number_type, text_format)
+		if x < IVUnits.TONNE:
+			return fixed_unit(x, &"kg", precision, number_type, text_format)
+		return fixed_unit(x, &"t", precision, number_type, text_format),
+	
+	# g if < 1 kg, kg if < 1 t, else t, Mt, Gt, etc.
+	mass_g_kg_prefixed_t = func mass_g_kg_prefixed_t(x: float, precision: int,
+			number_type: NumberType, text_format: TextFormat) -> String:
+		if x < IVUnits.KG:
+			return fixed_unit(x, &"g", precision, number_type, text_format)
+		if x < IVUnits.TONNE:
+			return fixed_unit(x, &"kg", precision, number_type, text_format)
+		return prefixed_unit(x, &"t", precision, number_type, text_format),
+	
+	# g/d, kg/d, t/d, kt/d, Mt/d, Gt/d, etc.
+	mass_rate_g_kg_prefixed_t_per_d = func mass_rate_g_kg_prefixed_t_per_d(x: float, precision: int,
+			number_type: NumberType, text_format: TextFormat) -> String:
+		if x < IVUnits.KG:
+			return fixed_unit(x, &"g", precision, number_type, text_format)
+		if x < IVUnits.TONNE:
+			return fixed_unit(x, &"kg", precision, number_type, text_format)
+		return prefixed_unit(x, &"t", precision, number_type, text_format),
+	
+	# d if < 1000 d, else y.
+	time_d_y = func time_d_y(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		if x <= 1000.0 * IVUnits.DAY:
+			return fixed_unit(x, &"d", precision, number_type, text_format)
+		return fixed_unit(x, &"y", precision, number_type, text_format),
+	
+	# h if < 24 h, d if < 1000 d, else y.
+	time_h_d_y = func time_h_d_y(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		if x < 24.0 * IVUnits.HOUR:
+			return fixed_unit(x, &"h", precision, number_type, text_format)
+		if x <= 1000.0 * IVUnits.DAY:
+			return fixed_unit(x, &"d", precision, number_type, text_format)
+		return fixed_unit(x, &"y", precision, number_type, text_format),
+	
+	# m/s if < 1 km/s, else km/s.
+	velocity_mps_kmps = func velocity_mps_kmps(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		const KMPS := IVUnits.KM / IVUnits.SECOND
+		if x < KMPS:
+			return fixed_unit(x, &"m/s", precision, number_type, text_format)
+		return fixed_unit(x, &"km/s", precision, number_type, text_format),
+	
+	# m/s if < 1 km/s, km/s if < 0.1 c, else c.
+	velocity_mps_kmps_c = func velocity_mps_kmps_c(x: float, precision: int, number_type: NumberType,
+			text_format: TextFormat) -> String:
+		const KMPS := IVUnits.KM / IVUnits.SECOND
+		const ONE_TENTH_C := 0.1 * IVUnits.SPEED_OF_LIGHT
+		if x < KMPS:
+			return fixed_unit(x, &"m/s", precision, number_type, text_format)
+		if x < ONE_TENTH_C:
+			return fixed_unit(x, &"km/s", precision, number_type, text_format)
+		return fixed_unit(x, &"c", precision, number_type, text_format),
 }
 
 
@@ -266,161 +370,19 @@ func retranslate() -> void:
 		_tr[key] = tr(key)
 
 
-
-# *****************************************************************************
-# Dynamic unit wrapper and callables...
-
-
-## This is a wrapper function that calls a method specified in [member dynamic_unit_callables]
-## (e.g., [method length_m_km]). [param dynamic_key] must be a key in
-## [member dynamic_unit_callables] such as &"length_m_km".
-func dynamic_unit(x: float, dynamic_key: StringName, precision := 3,
-		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	assert(dynamic_unit_callables.has(dynamic_key))
-	var callable := dynamic_unit_callables[dynamic_key]
-	return callable.call(x, precision, number_type, text_format)
-
-
-## Returns value string in units m if x < 1.0 km, else km.
-func length_m_km(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < IVUnits.KM:
-		return fixed_unit(x, &"m", precision, number_type, text_format)
-	return fixed_unit(x, &"km", precision, number_type, text_format)
-
-
-## Returns value string in units km if x < 0.1 au, else au.
-func length_km_au(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < 0.1 * IVUnits.AU:
-		return fixed_unit(x, &"km", precision, number_type, text_format)
-	return fixed_unit(x, &"au", precision, number_type, text_format)
-
-
-## Returns value string in units m if x < 1.0 km, km if x < 0.1 au, else au.
-func length_m_km_au(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < IVUnits.KM:
-		return fixed_unit(x, &"m", precision, number_type, text_format)
-	if x < 0.1 * IVUnits.AU:
-		return fixed_unit(x, &"km", precision, number_type, text_format)
-	return fixed_unit(x, &"au", precision, number_type, text_format)
-
-
-## Returns value string in units m if x < 1.0 km, km if x < 0.1 au, au if x < 0.1 ly, else ly.
-func length_m_km_au_ly(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < IVUnits.KM:
-		return fixed_unit(x, &"m", precision, number_type, text_format)
-	if x < 0.1 * IVUnits.AU:
-		return fixed_unit(x, &"km", precision, number_type, text_format)
-	if x < 0.1 * IVUnits.LIGHT_YEAR:
-		return fixed_unit(x, &"au", precision, number_type, text_format)
-	return fixed_unit(x, &"ly", precision, number_type, text_format)
-
-
-## Returns value string in units m if x < 1.0 km, km if x < 0.1 au, au if x < 0.1 parsec,
-## else prefixed parsec (e.g., pc, kpc, Mpc, Gpc, etc.).
-func length_m_km_au_prefixed_parsec(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < IVUnits.KM:
-		return fixed_unit(x, &"m", precision, number_type, text_format)
-	if x < 0.1 * IVUnits.AU:
-		return fixed_unit(x, &"km", precision, number_type, text_format)
-	if x < 0.1 * IVUnits.PARSEC:
-		return fixed_unit(x, &"au", precision, number_type, text_format)
-	return prefixed_unit(x, &"pc", precision, number_type, text_format)
-
-
-## Returns value string in units g if < 1.0 kg, else kg.
-func mass_g_kg(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < IVUnits.KG:
-		return fixed_unit(x, &"g", precision, number_type, text_format)
-	return fixed_unit(x, &"kg", precision, number_type, text_format)
-
-
-## Returns value string in units g if < 1.0 kg, kg if < 1.0 t, else t.
-func mass_g_kg_t(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < IVUnits.KG:
-		return fixed_unit(x, &"g", precision, number_type, text_format)
-	if x < IVUnits.TONNE:
-		return fixed_unit(x, &"kg", precision, number_type, text_format)
-	return fixed_unit(x, &"t", precision, number_type, text_format)
-
-
-## Returns value string in units g if < 1.0 kg, kg if < 1.0 t, else prefixed t
-## (e.g., t, Mt, Gt, etc.).
-func mass_g_kg_prefixed_t(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < IVUnits.KG:
-		return fixed_unit(x, &"g", precision, number_type, text_format)
-	if x < IVUnits.TONNE:
-		return fixed_unit(x, &"kg", precision, number_type, text_format)
-	return prefixed_unit(x, &"t", precision, number_type, text_format)
-
-
-## Returns value string in mass rate units g/d, kg/d, t/d, kt/d, Mt/d, Gt/d, etc.
-func mass_rate_g_kg_prefixed_t_per_d(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < IVUnits.KG:
-		return fixed_unit(x, &"g", precision, number_type, text_format)
-	if x < IVUnits.TONNE:
-		return fixed_unit(x, &"kg", precision, number_type, text_format)
-	return prefixed_unit(x, &"t", precision, number_type, text_format)
-
-
-## Returns value string in units d if < 1000.0 d, else y.
-func time_d_y(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x <= 1000.0 * IVUnits.DAY:
-		return fixed_unit(x, &"d", precision, number_type, text_format)
-	return fixed_unit(x, &"y", precision, number_type, text_format)
-
-
-## Returns value string in units h if < 24 h, d if < 1000.0 d, else y.
-func time_h_d_y(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	if x < 24.0 * IVUnits.HOUR:
-		return fixed_unit(x, &"h", precision, number_type, text_format)
-	if x <= 1000.0 * IVUnits.DAY:
-		return fixed_unit(x, &"d", precision, number_type, text_format)
-	return fixed_unit(x, &"y", precision, number_type, text_format)
-
-
-## Returns value string in units m/s if < 1.0 km/s, else km/s.
-func velocity_mps_kmps(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	const KMPS := IVUnits.KM / IVUnits.SECOND
-	if x < KMPS:
-		return fixed_unit(x, &"m/s", precision, number_type, text_format)
-	return fixed_unit(x, &"km/s", precision, number_type, text_format)
-
-
-## Returns value string in units m/s if < 1.0 km/s, km/s if < 0.1 c, else c.
-func velocity_mps_kmps_c(x: float, precision := 3, number_type := NumberType.DYNAMIC,
-		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	const KMPS := IVUnits.KM / IVUnits.SECOND
-	const ONE_TENTH_C := 0.1 * IVUnits.SPEED_OF_LIGHT
-	if x < KMPS:
-		return fixed_unit(x, &"m/s", precision, number_type, text_format)
-	if x < ONE_TENTH_C:
-		return fixed_unit(x, &"km/s", precision, number_type, text_format)
-	return fixed_unit(x, &"c", precision, number_type, text_format)
-
-
-# *****************************************************************************
-
 ## Returns a formatted number string specified by [param precision] and [param number_type].
-## If x is NAN, returns "".
-## [param precision] == 0 displays 1 significant digit with a prepended "~" (e.g., "~1 km").
-## if [param precision] < 0, output will be unformatted str(x).
+## See [member NumberType].[br][br]
+##
+## If [param precision] is 0, return string will have 1 significant digit with a
+## prepended "~" (e.g., "~1 km" or "~0.5 km"). If [param precision] < 0, return
+## will be unformatted [code]str(x)[/code].[br][br]
+##
+## Returns "NAN" if [param x] is NAN.
 func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> String:
 	const LOG_OF_10 := log(10.0)
 	
 	if is_nan(x):
-		return ""
+		return "NAN"
 	
 	if precision < 0:
 		return (str(x))
@@ -473,16 +435,18 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 	return "%s%.*f%s%.f" % [prepend, precision - 1, x, exponent_str, pow10] # e.g., '5.55e5'
 
 
-## Returns a named number string such as "1.0 Million", "1.0 Billion", etc.
-## For abs(x) < 1e6, returns the number as a string without decimal places.
-## If x is NAN, returns "".
+## Returns a named number string such as "1.00 Million", "1.00 Billion", etc.,
+## when abs(x) >= 1e6. Otherwise, returns the number as a string without decimal places
+## (e.g., "999999").[br][br]
+##
+## Returns "NAN" if [param x] is NAN.
 func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE
 		) -> String:
 	# Returns integer string up to '999999', then '1.00 Million', etc.
 	const LOG_OF_10 := log(10.0)
 	
 	if is_nan(x):
-		return ""
+		return "NAN"
 	
 	if abs(x) < 1e6:
 		return "%.f" % x
@@ -505,22 +469,44 @@ func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXE
 
 ## This is a wrapper method for [method named_number] that allows attachment
 ## of [param prefix] or [param suffix], or specification of a value [param multiplier].
-## E.g., generate strings such as "$1.00 Billion", "1.00 Million Species", etc.
+## It can be used to generate strings such as "$1.00 Billion", "1.00 Million Species", etc.[br][br]
+##
+## Returns "NAN" if [param x] is NAN.
 func modified_named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE,
 		prefix := "", suffix := "", multiplier := 1.0) -> String:
 	if is_nan(x):
-		return ""
+		return "NAN"
 	return prefix + named_number(x * multiplier, precision, text_format) + suffix
 
 
-## Returns a formatted quantity string with a fixed unit as specified.
-## The quantity number will be formatted as in [method number].
+## Calls a method specified in [member dynamic_unit_callables]. For example,
+## [param dynamic_name] == &"length_m_km_au_prefixed_pc" will result in
+## quantity strings with units "m", "km", "au", "pc", "kpc", "Mpc", "Gpc", etc.
+## (or "Meters", "Kilometers", ...). See code for available dynamic formats.[br][br]
+##
+## The numerical part of the quantity string will be formatted as in [method number].[br][br]
+##
+## Returns "NAN" if [param x] is NAN.
+func dynamic_unit(x: float, dynamic_name: StringName, precision := 3,
+		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
+	assert(dynamic_unit_callables.has(dynamic_name))
+	if is_nan(x):
+		return "NAN"
+	var callable := dynamic_unit_callables[dynamic_name]
+	return callable.call(x, precision, number_type, text_format)
+
+
+## Returns a formatted quantity string with a fixed unit as specified.[br][br]
+##
+## The numerical part of the quantity string will be formatted as in [method number].[br][br]
+##
+## Returns "NAN" if [param x] is NAN.
 func fixed_unit(x: float, unit: StringName, precision := 3,
 		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
 	if is_nan(x):
-		return ""
+		return "NAN"
 	
-	x = IVQConvert.externalize_quantity(x, unit)
+	x = IVQConvert.from_internal(x, unit)
 	var number_str := number(x, precision, number_type)
 	
 	var unit_str: String
@@ -536,7 +522,7 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 					unit_str = unit_str.to_upper()
 	
 	if !unit_str:
-		is_space = !skip_space.has(unit)
+		is_space = !unspaced_units.has(unit)
 		unit_str = short_forms[unit] if short_forms.has(unit) else String(unit)
 	
 	if is_space:
@@ -544,23 +530,28 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 	return number_str + unit_str
 
 
-## Returns a formatted quantity string with a dynamically prefixed unit. 
-## The quantity number will be formatted as in [method number].
-## Example results with unit == 't': '5.00 Gt' or '5.00 Gigatonnes',
-## depending on text_format.
-## WARNING: Don't try to prefix an already-prefixed unit (e.g., 'km') or any
-## composite unit where the first unit has a power other than 1 (eg, 'm^3').
-## The result will look weird and/or be wrong (eg, 1000 m^3 -> 1.00 km^3).
-## unit == &"" ok; otherwise, unit must be in multipliers or lamdas dicts
-## in IVQConvert.
+## Returns a formatted quantity string with a dynamically prefixed unit.
+## For example, with [param unit] == &"Hz", the return might be "1.00 Hz", "1.00 kHz",
+## "1.00 MHz", "1.00 Hertz", "1.00 Kilohertz", or "1.00 Megahertz" (depending on other
+## parameters).[br][br]
+##
+## Don't call with an already-prefixed unit such as "kg" (use "g" instead)
+## or any composite unit where the leading unit has a power other than one
+## (e.g., "m^3"). The result will look weird in the former case (e.g., "1.00 kkg")
+## and be be wrong in the latter case (e.g., 1000.0 m^3 might be displayed as
+## "1.00 km^3").[br][br]
+##
+## The numerical part of the quantity string will be formatted as in [method number].[br][br]
+##
+## Returns "NAN" if [param x] is NAN.
 func prefixed_unit(x: float, unit: StringName, precision := 3,
 		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
 	const LOG_OF_10 := log(10.0)
 	
 	if is_nan(x):
-		return ""
+		return "NAN"
 	if unit:
-		x = IVQConvert.externalize_quantity(x, unit)
+		x = IVQConvert.from_internal(x, unit)
 	var exp_3s_index := 0
 	if x != 0.0:
 		exp_3s_index = floori(log(absf(x)) / (LOG_OF_10 * 3.0))
@@ -591,7 +582,7 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 					unit_str = (prefix_name + unit_str).to_lower()
 	
 	if !unit_str:
-		is_space = !skip_space.has(unit)
+		is_space = !unspaced_units.has(unit)
 		var prefix_symbol: String = prefix_symbols[si_index]
 		if short_forms.has(unit):
 			unit_str = prefix_symbol + short_forms[unit]
@@ -604,7 +595,7 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 
 
 ## Returns a latitude-longitude string in format specified by [param lat_long_type].
-## See [member LatitudeLongitudeType].
+## See [member LatitudeLongitudeType]. Assumes internal use of radians.
 func latitude_longitude(lat_long: Vector2, decimal_pl := 0,
 		lat_long_type := LatitudeLongitudeType.N_S_E_W, text_format := TextFormat.SHORT_MIXED_CASE
 		) -> String:
@@ -613,7 +604,7 @@ func latitude_longitude(lat_long: Vector2, decimal_pl := 0,
 
 
 ## Returns a latitude string in format specified by [param lat_long_type].
-## See [member LatitudeLongitudeType].
+## See [member LatitudeLongitudeType]. Assumes internal use of radians.
 func latitude(x: float, decimal_pl := 0, lat_long_type := LatitudeLongitudeType.N_S_E_W,
 		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
 	
@@ -650,7 +641,7 @@ func latitude(x: float, decimal_pl := 0, lat_long_type := LatitudeLongitudeType.
 
 
 ## Returns a longitude string in format specified by [param lat_long_type].
-## See [member LatitudeLongitudeType].
+## See [member LatitudeLongitudeType]. Assumes internal use of radians.
 func longitude(x: float, decimal_pl := 0, lat_long_type := LatitudeLongitudeType.N_S_E_W,
 		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
 	

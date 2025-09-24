@@ -23,23 +23,29 @@ extends Node
 ##
 ## This node is added as singleton "IVUnits". You can replace this singleton by
 ## creating an override config file in your project directory
-## res://ivoyager_override.cfg (if it doesn't already exist), with these lines:
+## [code]res://ivoyager_override.cfg[/code] (if it doesn't already exist) with
+## these lines:
+##
 ## [codeblock]
 ##
 ## [units_autoload]
 ##
 ## IVUnits="your_replacement_path"
 ##
-## [/codeblock]
+## [/codeblock][br]
 ##
 ## You can add to or modify dictionaries [member unit_multipliers] and
 ## [member unit_lambdas] here. However, if you need different base units or
-## derived unit constants, we suggest you replace this singleton as outlined
-## above.[br][br]
+## unit constants, we suggest you replace this singleton as outlined above.[br][br]
 ##
-## Note: Unit StringName keys are usually the standard SI abbreviation, but not
-## always. Display unit abbreviation (if different) and long-form unit names
-## are defined in [IVQFormat].
+## See [IVQConvert] for unit quantity conversion API. In short, unit strings are
+## first tested in [member unit_multipliers] and then in [member unit_lambdas].
+## If not found in either, the unit string may be parsed as a compound unit.
+## Parsed compound units may be memoized for faster subsequent usage by adding
+## to [member unit_multipliers].[br][br]
+##
+## See [IVQFormat] for quantity GUI display API. Display symbol is often but
+## not always the same as the unit dictionary key.
 
 
 # SI base units
@@ -85,8 +91,11 @@ const GRAVITATIONAL_CONSTANT := 6.67430e-11 * METER ** 3 / (KG * SECOND ** 2)
 
 
 ## Conversion multipliers for units that are linear with zero-intersect.
+## Internal unit symbols must be unique. However, redundant symbol usage can
+## be specified for display in [IVQFormat] (e.g., &"g" for gram and &"g0" for
+## g-force both display as "g"). 
 ## Default units are mostly (but not all) SI units that follow:
-## https://en.wikipedia.org/wiki/International_System_of_Units
+## [url]https://en.wikipedia.org/wiki/International_System_of_Units[/url].
 var unit_multipliers: Dictionary[StringName, float] = {
 	# time
 	&"s" : SECOND,
@@ -134,7 +143,7 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	&"c" : SPEED_OF_LIGHT,
 	# acceleration/gravity
 	&"m/s^2" : METER / SECOND ** 2,
-	&"_g" : STANDARD_GRAVITY,
+	&"g0" : STANDARD_GRAVITY,
 	# angular velocity
 	&"rad/s" : 1.0 / SECOND, 
 	&"deg/d" : DEG / DAY,
@@ -200,11 +209,16 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	&"TiB" : 8.0 * 1024.0 ** 4,
 }
 
-## Conversion lambdas for units that are nonlinear or have non-zero intersect,
-## e.g., celsius and fahrenheit.
+## Conversion lambdas for units that are nonlinear or have non-zero intersect
+## (e.g., celsius and fahrenheit). All lambdas must have method signature
+## [code](x: float, to_internal: bool)[/code] where [param x] is the quantity
+## and [param to_internal] specifies conversion to internal (true) or from
+## internal (false).
 var unit_lambdas: Dictionary[StringName, Callable] = {
-	&"degC" : func convert_celsius(x: float, to_internal := true) -> float:
+	&"degC" : func convert_celsius(x: float, to_internal: bool) -> float:
+		# Assumes Kelvin is the internal unit.
 		return x + 273.15 if to_internal else x - 273.15,
-	&"degF" : func convert_fahrenheit(x: float, to_internal := true) -> float:
+	&"degF" : func convert_fahrenheit(x: float, to_internal: bool) -> float:
+		# Assumes Kelvin is the internal unit.
 		return  (x + 459.67) / 1.8 if to_internal else x * 1.8 - 459.67,
 }
