@@ -40,7 +40,7 @@ extends Node
 ## Defines display of unit symbols (versus unit names) and text case. Note that
 ## case is never altered in unit symbols.
 enum TextFormat {
-	# Note: We don't alter case in unit symbols!
+	# WARNING: Some code assumes first 3 are "short".
 	SHORT_MIXED_CASE, ## Examples: "1.00 Million", "1.00 kHz".
 	SHORT_UPPER_CASE, ## Examples: "1.00 MILLION", "1.00 kHz".
 	SHORT_LOWER_CASE, ## Examples: "1.00 million", "1.00 kHz".
@@ -49,27 +49,32 @@ enum TextFormat {
 	LONG_LOWER_CASE, ## Examples: "1.00 million", "1.00 kilohertz".
 }
 
-## Defines number format and the meaning of [param precision]. Note that
-## [param precision] means significant digits except in the case of
-## [member DECIMAL_PLACES].
+## Defines number format and the meaning of [param precision] in method calls.
+## Note that [param precision] means significant digits except in the case of
+## [member NumberType.DECIMAL_PLACES].
 enum NumberType {
-	DYNAMIC, ## 0.01 to 99999 as non-scientific, otherwise scientific.
+	DYNAMIC, ## Scientific if absolute value > [member dynamic_large] or < [member dynamic_small].
 	SCIENTIFIC, ## Always scientific using precision as significant digits.
-	PRECISION, ## Examples with precision == 3: "12300" (forces zeros), "1.23", "0.0000123".
+	PRECISION, ## Non-scientific; force zeros for precision, e.g., "556000", not "555555".
+	DYNAMIC_PRECISION, ## As PRECISION for non-scientific range.
 	DECIMAL_PLACES, ## Decimal representation with decimal places equal to [param precision].
 }
 
 ## Return format for latitude, longitude strings.
 enum LatitudeLongitudeType {
-	N_S_E_W, ## E.g., "55° S, 55° E"
-	LAT_LONG, ## E.g., "-55° lat., 55° lon."
-	PITCH_YAW, ## E.g., "-55° pitch, 55° yaw"
+	N_S_E_W, ## E.g., "30° S, 30° W"
+	LAT_LON, ## E.g., "-30° lat, 330° lon"
+	PITCH_YAW, ## E.g., "-30° pitch, -30° yaw"
 }
 
 
 
 ## String for formatting scientific notation. E.g., set to " × 10^" for "9.99 × 10^9".
 var exponent_str := "e"
+
+var dynamic_large := 99999.5
+var dynamic_small := 0.01
+
 
 ## 3rd magnitude prefixes (full names). If modifying, be sure to modify [member prefix_symbols]
 ## and [member prefix_offset] as needed.
@@ -87,13 +92,14 @@ var prefix_symbols: Array[String] = [ # e-30, ..., e30
 ## Update if changing those arrays.
 var prefix_offset := prefix_symbols.find("") # UPDATE if prefix_symbols changed!
 
-## 3rd magnitude number names as text keys, starting with 10e6.[br][br]
+## 3rd magnitude number names as text keys, starting with 1e3.[br][br]
 ##
-## IMPORTANT! Call [method retranslate] after modifying.
+## Call [method retranslate] after modifying.
 var large_number_names: Array[StringName] = [
+	&"TXT_THOUSAND", 
 	&"TXT_MILLION", &"TXT_BILLION", &"TXT_TRILLION", &"TXT_QUADRILLION", &"TXT_QUINTILLION",
 	&"TXT_SEXTILLION", &"TXT_SEPTILLION", &"TXT_OCTILLION", &"TXT_NONILLION", &"TXT_DECILLION"
-] # e6, ..., e33
+]
 
 ## "Long form" unit names as text keys. If a unit is missing here, code will fallback to
 ## [member short_forms] and then to the unit symbol itself.[br][br]
@@ -349,20 +355,32 @@ var _to_localize: Array[StringName] = [&"TXT_NORTH", &"TXT_SOUTH", &"TXT_EAST", 
 		&"TXT_LATITUDE", &"TXT_LONGITUDE", &"TXT_PITCH", &"TXT_YAW",
 		&"TXT_NORTH_SHORT", &"TXT_SOUTH_SHORT", &"TXT_EAST_SHORT", &"TXT_WEST_SHORT",
 		&"TXT_LATITUDE_SHORT", &"TXT_LONGITUDE_SHORT"]
-
+var _n_large_number_names: int
 
 
 func _ready() -> void:
 	retranslate()
+	
+	#print(named_number(2.0, 3))
+	#print(named_number(2e5, 3))
+	#print(named_number(9.9999999e5, 3))
+	#print(named_number(1e6, 3))
+	#print(named_number(2e6, 3))
+	#print(named_number(2e9, 3))
+	#print(named_number(2e12, 3))
+	#print(named_number(2e15, 3))
+	#print(named_number(2e18, 3))
+	#print(named_number(2e50, 3))
+
 
 
 ## Call this method after modifying this class's arrays or dictionaries that
 ## contain translation text keys, or after changing language at runtime. This
 ## is necessary to allow threadsafe use of String return methods.
 func retranslate() -> void:
-	var large_number_names_size := large_number_names.size()
-	_large_number_names_tr.resize(large_number_names_size)
-	for i in large_number_names_size:
+	_n_large_number_names = large_number_names.size()
+	_large_number_names_tr.resize(_n_large_number_names)
+	for i in _n_large_number_names:
 		_large_number_names_tr[i] = tr(large_number_names[i])
 	for key in long_forms:
 		_long_forms_tr[key] = tr(long_forms[key])
@@ -370,101 +388,105 @@ func retranslate() -> void:
 		_tr[key] = tr(key)
 
 
+
 ## Returns a formatted number string specified by [param precision] and [param number_type].
 ## See [member NumberType].[br][br]
 ##
-## If [param precision] is 0, return string will have 1 significant digit with a
-## prepended "~" (e.g., "~1 km" or "~0.5 km"). If [param precision] < 0, return
-## will be unformatted [code]str(x)[/code].[br][br]
+## If [param precision] is -1, return will be [code]String.num(x)[/code].[br][br]
+##
+## If [param precision] is 0 and number_type != DECIMAL_PLACES, return string
+## will have 1 significant digit with a prepended "~" (e.g., "~1 km" or "~0.5 km").[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> String:
-	const LOG_OF_10 := log(10.0)
+	const DYNAMIC := NumberType.DYNAMIC
+	const SCIENTIFIC := NumberType.SCIENTIFIC
+	const PRECISION := NumberType.PRECISION
+	const DECIMAL_PLACES := NumberType.DECIMAL_PLACES
+	const LOG_MULTIPLIER := 1.0 / log(10.0)
 	
+	assert(precision >= -1)
 	if is_nan(x):
 		return "NAN"
+	if number_type == DECIMAL_PLACES or precision == -1:
+		return String.num(x, precision)
 	
-	if precision < 0:
-		return (str(x))
-	
+	# approximate "~" prepend
 	var prepend := ""
 	if precision == 0:
 		prepend = "~"
 		precision = 1
-		
-	# specified decimal places
-	if number_type == NumberType.DECIMAL_PLACES:
-		return ("%s%.*f" % [prepend, precision, x])
 	
-	# All below use significant digits, not decimal places!
-	# handle 0.0 case
-	if x == 0.0: # don't do '0.00e0' even if NUM_SCIENTIFIC
-		return "%s%.*f" % [prepend, precision - 1, 0.0] # e.g., '0.00' for precision 3
-		
+	# handle 0.0 case (for math error and format)
+	if x == 0.0: # don't do "0.00e0" even if SCIENTIFIC
+		return "%s%.*f" % [prepend, precision - 1, 0.0] # e.g., "0.00" for precision 3
+	
 	var abs_x := absf(x)
-	var pow10 := floorf(log(abs_x) / LOG_OF_10)
-	var divisor: float
+	var exponent := floori(log(abs_x) * LOG_MULTIPLIER)
 	
-	if number_type == NumberType.PRECISION:
-		var decimal_pl := precision - int(pow10) - 1
-		if decimal_pl > 0:
-			return "%s%.*f" % [prepend, decimal_pl, x] # e.g., '0.0555'
-		if decimal_pl == 0:
-			return "%s%.f" % [prepend, x] # whole number, '555'
-		else: # remove over-precision
-			divisor = pow(10.0, -decimal_pl)
-			x = round(x / divisor)
-			return "%s%.f" % [prepend, x * divisor] # '555000'
-	
-	# handle 0.01 - 99999 for NUM_DYNAMIC
-	if number_type == NumberType.DYNAMIC and abs_x < 99999.5 and abs_x > 0.01:
-		var decimal_pl := precision - int(pow10) - 1
-		if decimal_pl > 0:
-			return "%s%.*f" % [prepend, decimal_pl, x] # e.g., '0.0555'
-		else:
-			return "%s%.f" % [prepend, x] # whole number, allow over-precision
+	if (number_type == PRECISION
+			or (number_type != SCIENTIFIC and abs_x < dynamic_large and abs_x > dynamic_small)):
+		var decimal_pl := precision - exponent - 1
+		if decimal_pl >= 0:
+			# FIXME: Rounding up sometimes bumps precision, so 0.999999 -> "1.000" w/ precision 3
+			return "%s%.*f" % [prepend, decimal_pl, x]
+		elif number_type == DYNAMIC:
+			return "%s%.f" % [prepend, x] # whole number allowing over-precision
+		else: # PRECISION or DYNAMIC_PRECISION, so remove over-precision
+			return prepend + str(snappedf(x, pow(10.0, -decimal_pl))) # "555000"
 	
 	# scientific
-	divisor = pow(10.0, pow10)
-	x = x / divisor if !is_zero_approx(divisor) else 1.0
-	var exp_precision := pow(10.0, precision - 1)
-	var precision_rounded := roundf(x * exp_precision) / exp_precision
-	if precision_rounded == 10.0: # prevent '10.00e3' after rounding
-		x /= 10.0
-		pow10 += 1
-	return "%s%.*f%s%.f" % [prepend, precision - 1, x, exponent_str, pow10] # e.g., '5.55e5'
+	var sign_str := "-" if x < 0.0 else ""
+	var divisor := pow(10.0, exponent)
+	var mantissa := abs_x / divisor if divisor != 0.0 else 1.0
+	var mantissa_str := "%.*f" % [precision - 1, mantissa]
+	if mantissa_str.length() > 1 and mantissa_str[1] == "0": # fix "10" or "10.*" from rounding
+		assert(mantissa_str == "10" or mantissa_str.begins_with("10."))
+		mantissa_str = "%.*f" % [precision - 1, 1.0]
+		exponent += 1
+	
+	return prepend + sign_str + mantissa_str + exponent_str + str(exponent)
 
 
-## Returns a named number string such as "1.00 Million", "1.00 Billion", etc.,
-## when abs(x) >= 1e6. Otherwise, returns the number as a string without decimal places
-## (e.g., "999999").[br][br]
+
+## Returns a named number string such as "1.00 Million", "1.00 Billion", etc.
+## Returns small numbers as the rounded number (e.g., "999999").[br][br]
+##
+## [param min_named] is the minimum number to be named (999999.5 by default).
+## Set to 999.5 to use "Thousand".
 ##
 ## Returns "NAN" if [param x] is NAN.
-func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE
-		) -> String:
-	# Returns integer string up to '999999', then '1.00 Million', etc.
-	const LOG_OF_10 := log(10.0)
+func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE,
+		min_named := 999999.5) -> String:
+	const LOG_MULTIPLIER_3_ORDERS := 1.0 / (3.0 * log(10.0))
 	
 	if is_nan(x):
 		return "NAN"
 	
-	if abs(x) < 1e6:
+	var abs_x := absf(x)
+	if abs_x < min_named:
 		return "%.f" % x
-	var exp_3s_index := floori(log(absf(x)) / (LOG_OF_10 * 3.0))
-	var lg_num_index := exp_3s_index - 2
-	if lg_num_index < 0: # shouldn't happen but just in case
-		return "%.f" % x
-	if lg_num_index >= _large_number_names_tr.size():
-		lg_num_index = _large_number_names_tr.size() - 1
-		exp_3s_index = lg_num_index + 2
-	x /= pow(10.0, exp_3s_index * 3)
-	var lg_number_str: String = _large_number_names_tr[lg_num_index]
+		
+	var number_type := NumberType.PRECISION
+	var exponent_triples := floori(log(abs_x) * LOG_MULTIPLIER_3_ORDERS)
+	if exponent_triples < 1: # possible due to imprecission in equation above
+		exponent_triples = 1
+	if exponent_triples > _n_large_number_names:
+		exponent_triples = _n_large_number_names
+		number_type = NumberType.SCIENTIFIC
+	x /= pow(10.0, exponent_triples * 3)
+	if roundi(x) == 1000 and exponent_triples < _n_large_number_names:
+		x /= 1000.0
+		exponent_triples += 1
+	
+	var number_name: String = _large_number_names_tr[exponent_triples - 1]
 	match text_format:
 		TextFormat.SHORT_UPPER_CASE, TextFormat.LONG_UPPER_CASE:
-			lg_number_str = lg_number_str.to_upper()
+			number_name = number_name.to_upper()
 		TextFormat.SHORT_LOWER_CASE, TextFormat.LONG_LOWER_CASE:
-			lg_number_str = lg_number_str.to_lower()
-	return number(x, precision, NumberType.DYNAMIC) + " " + lg_number_str
+			number_name = number_name.to_lower()
+	
+	return number(x, precision, number_type) + " " + number_name
 
 
 ## This is a wrapper method for [method named_number] that allows attachment
@@ -503,6 +525,9 @@ func dynamic_unit(x: float, dynamic_name: StringName, precision := 3,
 ## Returns "NAN" if [param x] is NAN.
 func fixed_unit(x: float, unit: StringName, precision := 3,
 		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
+	const LONG_UPPER_CASE := TextFormat.LONG_UPPER_CASE
+	const LONG_LOWER_CASE := TextFormat.LONG_LOWER_CASE
+	
 	if is_nan(x):
 		return "NAN"
 	
@@ -512,17 +537,15 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 	var unit_str: String
 	var is_space := true
 	
-	match text_format:
-		TextFormat.LONG_MIXED_CASE, TextFormat.LONG_UPPER_CASE, TextFormat.LONG_LOWER_CASE:
-			if _long_forms_tr.has(unit):
-				unit_str = _long_forms_tr[unit]
-				if text_format == TextFormat.LONG_UPPER_CASE:
-					unit_str = unit_str.to_upper()
-				elif text_format == TextFormat.LONG_LOWER_CASE:
-					unit_str = unit_str.to_upper()
+	if text_format >= 3 and _long_forms_tr.has(unit): # long format
+		unit_str = _long_forms_tr[unit]
+		if text_format == LONG_UPPER_CASE:
+			unit_str = unit_str.to_upper()
+		elif text_format == LONG_LOWER_CASE:
+			unit_str = unit_str.to_upper()
 	
-	if !unit_str:
-		is_space = !unspaced_units.has(unit)
+	else: # short format
+		is_space = not unspaced_units.has(unit)
 		unit_str = short_forms[unit] if short_forms.has(unit) else String(unit)
 	
 	if is_space:
@@ -546,139 +569,170 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 ## Returns "NAN" if [param x] is NAN.
 func prefixed_unit(x: float, unit: StringName, precision := 3,
 		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	const LOG_OF_10 := log(10.0)
+	const LONG_MIXED_CASE := TextFormat.LONG_MIXED_CASE
+	const LONG_UPPER_CASE := TextFormat.LONG_UPPER_CASE
+	const LONG_LOWER_CASE := TextFormat.LONG_LOWER_CASE
+	const LOG_MULTIPLIER_3_ORDERS := 1.0 / (3.0 * log(10.0))
 	
 	if is_nan(x):
 		return "NAN"
 	if unit:
 		x = IVQConvert.from_internal(x, unit)
-	var exp_3s_index := 0
+	var exponent_triples := 0
 	if x != 0.0:
-		exp_3s_index = floori(log(absf(x)) / (LOG_OF_10 * 3.0))
-	var si_index := exp_3s_index + prefix_offset
+		exponent_triples = floori(log(absf(x)) * LOG_MULTIPLIER_3_ORDERS)
+	var si_index := exponent_triples + prefix_offset
 	if si_index < 0:
 		si_index = 0
-		exp_3s_index = -prefix_offset
+		exponent_triples = -prefix_offset
 	elif si_index >= prefix_symbols.size():
 		si_index = prefix_symbols.size() - 1
-		exp_3s_index = si_index - prefix_offset
-	x /= pow(10.0, exp_3s_index * 3)
+		exponent_triples = si_index - prefix_offset
+	x /= pow(10.0, exponent_triples * 3)
 	var number_str := number(x, precision, number_type)
 	
 	var unit_str: String
 	var is_space := true
 	
-	match text_format:
-		TextFormat.LONG_MIXED_CASE, TextFormat.LONG_UPPER_CASE, TextFormat.LONG_LOWER_CASE:
-			if _long_forms_tr.has(unit):
-				unit_str = _long_forms_tr[unit]
-				var prefix_name: String = prefix_names[si_index]
-				if text_format == TextFormat.LONG_MIXED_CASE:
-					if prefix_name != "":
-						unit_str = prefix_name + unit_str.to_lower()
-				elif text_format == TextFormat.LONG_UPPER_CASE:
-					unit_str = (prefix_name + unit_str).to_upper()
-				elif text_format == TextFormat.LONG_LOWER_CASE:
-					unit_str = (prefix_name + unit_str).to_lower()
+	if text_format >= 3 and _long_forms_tr.has(unit): # long format
+		unit_str = _long_forms_tr[unit]
+		var prefix_name: String = prefix_names[si_index]
+		if text_format == LONG_MIXED_CASE:
+			if prefix_name != "":
+				unit_str = prefix_name + unit_str.to_lower()
+		elif text_format == LONG_UPPER_CASE:
+			unit_str = (prefix_name + unit_str).to_upper()
+		elif text_format == LONG_LOWER_CASE:
+			unit_str = (prefix_name + unit_str).to_lower()
 	
-	if !unit_str:
-		is_space = !unspaced_units.has(unit)
+	else: # short format
+		is_space = not unspaced_units.has(unit)
 		var prefix_symbol: String = prefix_symbols[si_index]
 		if short_forms.has(unit):
 			unit_str = prefix_symbol + short_forms[unit]
 		else:
-			unit_str = prefix_symbol + String(unit)
-
+			unit_str = prefix_symbol + unit
+	
 	if is_space:
 		return number_str + " " + unit_str
 	return number_str + unit_str
 
 
-## Returns a latitude-longitude string in format specified by [param lat_lon_type].
-## See [member LatitudeLongitudeType]. Assumes internal use of radians.
+## Returns a latitude-longitude string in degrees (°) in format specified by
+## [param lat_lon_type]. See [member LatitudeLongitudeType]. Assumes internal
+## use of radians.
 func latitude_longitude(lat_lon: Vector2, decimal_pl := 0,
-		lat_lon_type := LatitudeLongitudeType.N_S_E_W, text_format := TextFormat.SHORT_MIXED_CASE
-		) -> String:
-	return (latitude(lat_lon[0], decimal_pl, lat_lon_type, text_format) + " "
-			+ longitude(lat_lon[1], decimal_pl, lat_lon_type, text_format))
+		lat_lon_type := LatitudeLongitudeType.N_S_E_W, text_format := TextFormat.SHORT_MIXED_CASE,
+		spacer := " ") -> String:
+	const N_S_E_W := LatitudeLongitudeType.N_S_E_W
+	const LAT_LON := LatitudeLongitudeType.LAT_LON
+	
+	var lat := wrapf(rad_to_deg(lat_lon[0]), -180.0, 180.0)
+	var lon := rad_to_deg(lat_lon[1])
+	var is_short := text_format < 3
+	var lat_label: String
+	var lon_label: String
+	if lat_lon_type == N_S_E_W:
+		if lat > -0.0001: # prefer N if nearly 0 after conversion
+			lat_label = _tr[&"TXT_NORTH_SHORT"] if is_short else _tr[&"TXT_NORTH"]
+		else:
+			lat_label = _tr[&"TXT_SOUTH_SHORT"] if is_short else _tr[&"TXT_SOUTH"]
+		lat = absf(lat)
+		lon = wrapf(lon, -180.0, 180.0)
+		if lon > -0.0001 and lon < 179.9999: # nearly 0 is E; nearly 180 is W
+			lon_label = _tr[&"TXT_EAST_SHORT"] if is_short else _tr[&"TXT_EAST"]
+		else:
+			lon_label = _tr[&"TXT_WEST_SHORT"] if is_short else _tr[&"TXT_WEST"]
+		lon = absf(lon)
+	elif lat_lon_type == LAT_LON:
+		lat_label = _tr[&"TXT_LATITUDE_SHORT"] if is_short else _tr[&"TXT_LATITUDE"]
+		lon = wrapf(lon, 0.0, 360.0)
+		lon_label = _tr[&"TXT_LONGITUDE_SHORT"] if is_short else _tr[&"TXT_LONGITUDE"]
+	else: # PITCH_YAW
+		lat_label = _tr[&"TXT_PITCH"]
+		lon = wrapf(lon, -180.0, 180.0)
+		lon_label = _tr[&"TXT_YAW"]
+	
+	match text_format:
+		TextFormat.LONG_UPPER_CASE, TextFormat.SHORT_UPPER_CASE:
+			lat_label = lat_label.to_upper()
+			lon_label = lon_label.to_upper()
+		TextFormat.LONG_LOWER_CASE:
+			lat_label = lat_label.to_lower()
+			lon_label = lon_label.to_lower()
+		TextFormat.SHORT_LOWER_CASE:
+			if lat_lon_type != N_S_E_W: # don't lower case N, S, E, W
+				lat_label = lat_label.to_lower()
+				lon_label = lon_label.to_lower()
+	
+	return "%.*f° %s%s%.*f° %s" % [decimal_pl, lat, lat_label, spacer, decimal_pl, lon, lon_label]
 
 
-## Returns a latitude string in format specified by [param lat_lon_type].
+## Returns a latitude string in degrees (°) in format specified by [param lat_lon_type].
 ## See [member LatitudeLongitudeType]. Assumes internal use of radians.
 func latitude(x: float, decimal_pl := 0, lat_lon_type := LatitudeLongitudeType.N_S_E_W,
 		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
 	const N_S_E_W := LatitudeLongitudeType.N_S_E_W
-	const LAT_LONG := LatitudeLongitudeType.LAT_LONG
-	const SHORT_MIXED_CASE := TextFormat.SHORT_MIXED_CASE
-	const SHORT_UPPER_CASE := TextFormat.SHORT_UPPER_CASE
-	const SHORT_LOWER_CASE := TextFormat.SHORT_LOWER_CASE
-	const LONG_UPPER_CASE := TextFormat.LONG_UPPER_CASE
-	const LONG_LOWER_CASE := TextFormat.LONG_LOWER_CASE
-	const SHORT_FORMS: Array[TextFormat] = [SHORT_MIXED_CASE, SHORT_UPPER_CASE, SHORT_LOWER_CASE]
+	const LAT_LON := LatitudeLongitudeType.LAT_LON
 	
 	x = rad_to_deg(x)
-	
-	var short_form := SHORT_FORMS.has(text_format)
-	var suffix: String
+	x = wrapf(x, -180.0, 180.0)
+	var is_short := text_format < 3
+	var label: String
 	if lat_lon_type == N_S_E_W:
 		if x > -0.0001: # prefer N if nearly 0 after conversion
-			suffix = _tr[&"TXT_NORTH_SHORT"] if short_form else _tr[&"TXT_NORTH"]
+			label = _tr[&"TXT_NORTH_SHORT"] if is_short else _tr[&"TXT_NORTH"]
 		else:
-			suffix = _tr[&"TXT_SOUTH_SHORT"] if short_form else _tr[&"TXT_SOUTH"]
-		x = abs(x)
-	elif lat_lon_type == LAT_LONG:
-		suffix = _tr[&"TXT_LATITUDE_SHORT"] if short_form else _tr[&"TXT_LATITUDE"]
+			label = _tr[&"TXT_SOUTH_SHORT"] if is_short else _tr[&"TXT_SOUTH"]
+		x = absf(x)
+	elif lat_lon_type == LAT_LON:
+		label = _tr[&"TXT_LATITUDE_SHORT"] if is_short else _tr[&"TXT_LATITUDE"]
 	else: # PITCH_YAW
-		suffix = _tr[&"TXT_PITCH"]
+		label = _tr[&"TXT_PITCH"]
 	
 	match text_format:
-		LONG_UPPER_CASE, SHORT_UPPER_CASE:
-			suffix = suffix.to_upper()
-		LONG_LOWER_CASE:
-			suffix = suffix.to_lower()
-		SHORT_LOWER_CASE:
+		TextFormat.LONG_UPPER_CASE, TextFormat.SHORT_UPPER_CASE:
+			label = label.to_upper()
+		TextFormat.LONG_LOWER_CASE:
+			label = label.to_lower()
+		TextFormat.SHORT_LOWER_CASE:
 			if lat_lon_type != N_S_E_W: # don't lower case N, S
-				suffix = suffix.to_lower()
+				label = label.to_lower()
 	
-	return "%.*f\u00B0 %s" % [decimal_pl, x, suffix]
+	return "%.*f° %s" % [decimal_pl, x, label]
 
 
-## Returns a longitude string in format specified by [param lat_lon_type].
+## Returns a longitude string in degrees (°) in format specified by [param lat_lon_type]
 ## See [member LatitudeLongitudeType]. Assumes internal use of radians.
 func longitude(x: float, decimal_pl := 0, lat_lon_type := LatitudeLongitudeType.N_S_E_W,
 		text_format := TextFormat.SHORT_MIXED_CASE) -> String:
 	const N_S_E_W := LatitudeLongitudeType.N_S_E_W
-	const LAT_LONG := LatitudeLongitudeType.LAT_LONG
-	const SHORT_MIXED_CASE := TextFormat.SHORT_MIXED_CASE
-	const SHORT_UPPER_CASE := TextFormat.SHORT_UPPER_CASE
-	const SHORT_LOWER_CASE := TextFormat.SHORT_LOWER_CASE
-	const LONG_UPPER_CASE := TextFormat.LONG_UPPER_CASE
-	const LONG_LOWER_CASE := TextFormat.LONG_LOWER_CASE
-	const SHORT_FORMS: Array[TextFormat] = [SHORT_MIXED_CASE, SHORT_UPPER_CASE, SHORT_LOWER_CASE]
+	const LAT_LON := LatitudeLongitudeType.LAT_LON
 	
 	x = rad_to_deg(x)
-	
-	var short_form := SHORT_FORMS.has(text_format)
-	var suffix: String
+	var is_short := text_format < 3
+	var label: String
 	if lat_lon_type == N_S_E_W:
+		x = wrapf(x, -180.0, 180.0)
 		if x > -0.0001 and x < 179.9999: # nearly 0 is E; nearly 180 is W
-			suffix = _tr[&"TXT_EAST_SHORT"] if short_form else _tr[&"TXT_EAST"]
+			label = _tr[&"TXT_EAST_SHORT"] if is_short else _tr[&"TXT_EAST"]
 		else:
-			suffix = _tr[&"TXT_WEST_SHORT"] if short_form else _tr[&"TXT_WEST"]
-		x = abs(x)
-	elif lat_lon_type == LAT_LONG:
+			label = _tr[&"TXT_WEST_SHORT"] if is_short else _tr[&"TXT_WEST"]
+		x = absf(x)
+	elif lat_lon_type == LAT_LON:
 		x = wrapf(x, 0.0, 360.0)
-		suffix = _tr[&"TXT_LONGITUDE_SHORT"] if short_form else _tr[&"TXT_LONGITUDE"]
+		label = _tr[&"TXT_LONGITUDE_SHORT"] if is_short else _tr[&"TXT_LONGITUDE"]
 	else: # PITCH_YAW
-		suffix = _tr[&"TXT_YAW"]
+		x = wrapf(x, -180.0, 180.0)
+		label = _tr[&"TXT_YAW"]
 	
 	match text_format:
-		LONG_UPPER_CASE, SHORT_UPPER_CASE:
-			suffix = suffix.to_upper()
-		LONG_LOWER_CASE:
-			suffix = suffix.to_lower()
-		SHORT_LOWER_CASE:
-			if lat_lon_type != LatitudeLongitudeType.N_S_E_W: # don't lower case E, W
-				suffix = suffix.to_lower()
+		TextFormat.LONG_UPPER_CASE, TextFormat.SHORT_UPPER_CASE:
+			label = label.to_upper()
+		TextFormat.LONG_LOWER_CASE:
+			label = label.to_lower()
+		TextFormat.SHORT_LOWER_CASE:
+			if lat_lon_type != N_S_E_W: # don't lower case E, W
+				label = label.to_lower()
 	
-	return "%.*f\u00B0 %s" % [decimal_pl, x, suffix]
+	return "%.*f° %s" % [decimal_pl, x, label]
