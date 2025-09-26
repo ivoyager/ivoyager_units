@@ -22,18 +22,18 @@ extends Node
 ## Singleton [IVQFormat] provides API for formatting numbers and unit quantities
 ## for GUI display.
 ##
-## Methods here use [IVQConvert] API for unit conversions, which assumes (and
+## Methods here use [IVQConvert] for unit conversions, which assumes (and
 ## helps ensure) that the calling project uses consistant internal units.[br][br]
 ##
 ## If using named numbers or "long form" units, you'll need to add translations
 ## to your project. An Engligh translation is included in the plugin in file
 ## [code]ivoyaber_units/text/unit_numbers_text.en.translation[/code].[br][br]
 ##
-## This node "pre-translates" all relevant text keys. If modifying any arrays or
-## dictionaries that contain text keys or if changing language at runtime, be
-## sure to call [method retranslate] afterwards. The reason for this is that
-## [method Object.tr] throws an error if called on thread (as of Godot 4.5).
-## Pre-translation allows calling all of the String return methods here on threads.
+## Call [method reset] after modifying any array or dictionary properties, or
+## after changing language at runtime. This is needed if container sizes or
+## translations change. (All text keys are pre-translated because [method Object.tr]
+## throws an error if called on thread as of Godot 4.5. Pre-translation allows
+## calling any String-return method here on threads.)
 
 
 
@@ -94,7 +94,7 @@ var prefix_offset := prefix_symbols.find("") # UPDATE if prefix_symbols changed!
 
 ## 3rd magnitude number names as text keys, starting with 1e3.[br][br]
 ##
-## Call [method retranslate] after modifying.
+## Call [method reset] after modifying.
 var large_number_names: Array[StringName] = [
 	&"TXT_THOUSAND", 
 	&"TXT_MILLION", &"TXT_BILLION", &"TXT_TRILLION", &"TXT_QUADRILLION", &"TXT_QUINTILLION",
@@ -108,7 +108,7 @@ var large_number_names: Array[StringName] = [
 ## using [method prefixed_unit]. We have already-prefixed units here
 ## because it is common to want to display fixed units such as "3.00e9 km".[br][br]
 ##
-## IMPORTANT! Call [method retranslate] after modifying.
+## IMPORTANT! Call [method reset] after modifying.
 var long_forms: Dictionary[StringName, StringName] = {
 	
 	# time
@@ -205,9 +205,9 @@ var long_forms: Dictionary[StringName, StringName] = {
 }
 
 ## "Short form" unit names. If a unit is missing here, code will fallback to the
-## unit StringName itself, which is usually what we want: e.g., "km", "km/s", etc.
-## This dictionary is needed only when the internal unit symbol is not the
-## appropriate display symbol.
+## unit StringName itself (which is usually what we want: e.g., "km", "km/s", etc.).
+## This dictionary is needed only where the internal unit symbol differs from
+## the display symbol.
 var short_forms: Dictionary[StringName, String] = {
 	&"deg" : "°",
 	&"degC" : "°C",
@@ -215,7 +215,7 @@ var short_forms: Dictionary[StringName, String] = {
 	&"deg/d" : "°/d",
 	&"deg/a" : "°/a",
 	&"deg/Cy" : "°/Cy",
-	&"g0" : "g", # reused symbol for gravitational force equivalent
+	&"g0" : "g", # duplicate display for gram and g-force equivalent
 }
 
 ## Symbols that should not be preceded by a space. Possibly only units that
@@ -355,14 +355,16 @@ var _to_localize: Array[StringName] = [&"TXT_NORTH", &"TXT_SOUTH", &"TXT_EAST", 
 		&"TXT_LATITUDE", &"TXT_LONGITUDE", &"TXT_PITCH", &"TXT_YAW",
 		&"TXT_NORTH_SHORT", &"TXT_SOUTH_SHORT", &"TXT_EAST_SHORT", &"TXT_WEST_SHORT",
 		&"TXT_LATITUDE_SHORT", &"TXT_LONGITUDE_SHORT"]
+var _n_prefixes: int
 var _n_large_number_names: int
 
 
 func _ready() -> void:
-	retranslate()
+	reset()
 	
+	# TODO: More tests...
 	#print(named_number(2.0, 3))
-	#print(named_number(2e5, 3))
+	#print(named_number(999.5, 3, TextFormat.SHORT_MIXED_CASE, 999.5))
 	#print(named_number(9.9999999e5, 3))
 	#print(named_number(1e6, 3))
 	#print(named_number(2e6, 3))
@@ -374,10 +376,11 @@ func _ready() -> void:
 
 
 
-## Call this method after modifying this class's arrays or dictionaries that
-## contain translation text keys, or after changing language at runtime. This
-## is necessary to allow threadsafe use of String return methods.
-func retranslate() -> void:
+## Call this method after modifying any array or dictionary properties, or
+## after changing language at runtime (see class notes).
+func reset() -> void:
+	_n_prefixes = prefix_names.size()
+	assert(prefix_symbols.size() == _n_prefixes)
 	_n_large_number_names = large_number_names.size()
 	_large_number_names_tr.resize(_n_large_number_names)
 	for i in _n_large_number_names:
@@ -417,43 +420,49 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 		prepend = "~"
 		precision = 1
 	
-	# handle 0.0 case (for math error and format)
-	if x == 0.0: # don't do "0.00e0" even if SCIENTIFIC
+	# handle 0.0 case (math error below & don't want "0.00e0" even if SCIENTIFIC)
+	if x == 0.0:
 		return "%s%.*f" % [prepend, precision - 1, 0.0] # e.g., "0.00" for precision 3
 	
 	var abs_x := absf(x)
 	var exponent := floori(log(abs_x) * LOG_MULTIPLIER)
 	
+	# Note: Due to imprecision in equationa above AND to round up below (to 10,
+	# 100, etc.), exponent is sometimes one less than it should be. This is
+	# handled below where needed.
+	
 	if (number_type == PRECISION
 			or (number_type != SCIENTIFIC and abs_x < dynamic_large and abs_x > dynamic_small)):
 		var decimal_pl := precision - exponent - 1
-		if decimal_pl >= 0:
-			# FIXME: Rounding up sometimes bumps precision, so 0.999999 -> "1.000" w/ precision 3
-			return "%s%.*f" % [prepend, decimal_pl, x]
-		elif number_type == DYNAMIC:
-			return "%s%.f" % [prepend, x] # whole number allowing over-precision
+		if decimal_pl > 0: # has decimal part
+			var number_str := "%.*f" % [decimal_pl, x]
+			# Fix excess precision (e.g., 0.999999 w/ precision 3 -> "1.000").
+			if _get_float_str_precision(number_str) > precision:
+				number_str = number_str.trim_suffix("0")
+			return prepend + number_str
+		elif number_type == DYNAMIC or decimal_pl == 0:
+			return prepend + String.num(x, 0) # whole number
 		else: # PRECISION or DYNAMIC_PRECISION, so remove over-precision
-			return prepend + str(snappedf(x, pow(10.0, -decimal_pl))) # "555000"
+			return prepend + str(snappedi(x, 10 ** -decimal_pl), 0) # "555000"
 	
 	# scientific
 	var sign_str := "-" if x < 0.0 else ""
-	var divisor := pow(10.0, exponent)
+	var divisor := 10.0 ** exponent # need float for 0.1, 0.01, ...!
 	var mantissa := abs_x / divisor if divisor != 0.0 else 1.0
 	var mantissa_str := "%.*f" % [precision - 1, mantissa]
-	if mantissa_str.length() > 1 and mantissa_str[1] == "0": # fix "10" or "10.*" from rounding
-		assert(mantissa_str == "10" or mantissa_str.begins_with("10."))
+	if mantissa_str.length() > 1 and mantissa_str[1] == "0": # fix "10"
 		mantissa_str = "%.*f" % [precision - 1, 1.0]
 		exponent += 1
 	
 	return prepend + sign_str + mantissa_str + exponent_str + str(exponent)
 
 
-
 ## Returns a named number string such as "1.00 Million", "1.00 Billion", etc.
 ## Returns small numbers as the rounded number (e.g., "999999").[br][br]
 ##
-## [param min_named] is the minimum number to be named (999999.5 by default).
-## Set to 999.5 to use "Thousand".
+## [param min_named] is the minimum [param x] to be named (999999.5 by default,
+## which accounts for rounding). Set to 999.5 to name numbers starting at
+## "Thousand".[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE,
@@ -474,9 +483,9 @@ func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXE
 	if exponent_triples > _n_large_number_names:
 		exponent_triples = _n_large_number_names
 		number_type = NumberType.SCIENTIFIC
-	x /= pow(10.0, exponent_triples * 3)
+	x /= 10 ** (exponent_triples * 3) # positive exponent here
 	if roundi(x) == 1000 and exponent_triples < _n_large_number_names:
-		x /= 1000.0
+		x /= 1000
 		exponent_triples += 1
 	
 	var number_name: String = _large_number_names_tr[exponent_triples - 1]
@@ -553,10 +562,12 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 	return number_str + unit_str
 
 
-## Returns a formatted quantity string with a dynamically prefixed unit.
-## For example, with [param unit] == &"Hz", the return might be "1.00 Hz", "1.00 kHz",
-## "1.00 MHz", "1.00 Hertz", "1.00 Kilohertz", or "1.00 Megahertz" (depending on other
-## parameters).[br][br]
+## Returns a formatted quantity string with a number (usually between "1.00" and
+## "999" with default args) and a dynamically prefixed unit. For example, for
+## [param unit] == &"Hz", the return might be "999 kHz", "1.00 MHz",
+## "999 Kilohertz", or "1.00 Megahertz" (depending on other parameters).
+## Numbers will be <1.00 or >999 only if the value spills over the min or max
+## SI prefixes (currently q and Q).[br][br]
 ##
 ## Don't call with an already-prefixed unit such as "kg" (use "g" instead)
 ## or any composite unit where the leading unit has a power other than one
@@ -564,7 +575,8 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 ## and be be wrong in the latter case (e.g., 1000.0 m^3 might be displayed as
 ## "1.00 km^3").[br][br]
 ##
-## The numerical part of the quantity string will be formatted as in [method number].[br][br]
+## The numerical part of the quantity string will be formatted as in [method number]
+## (DYNAMIC makes the most sense here).[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func prefixed_unit(x: float, unit: StringName, precision := 3,
@@ -585,11 +597,15 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 	if si_index < 0:
 		si_index = 0
 		exponent_triples = -prefix_offset
-	elif si_index >= prefix_symbols.size():
-		si_index = prefix_symbols.size() - 1
+	elif si_index >= _n_prefixes:
+		si_index = _n_prefixes - 1
 		exponent_triples = si_index - prefix_offset
-	x /= pow(10.0, exponent_triples * 3)
+	x /= 10.0 ** (exponent_triples * 3) # possibly negative exponent, need float
 	var number_str := number(x, precision, number_type)
+	if number_str == "1000" and si_index < _n_prefixes - 1:
+		# Sometimes get results like "1000 MWh" due to imprecision and round up
+		number_str = number(1.0, precision, number_type)
+		si_index += 1
 	
 	var unit_str: String
 	var is_space := true
@@ -736,3 +752,9 @@ func longitude(x: float, decimal_pl := 0, lat_lon_type := LatitudeLongitudeType.
 				label = label.to_lower()
 	
 	return "%.*f° %s" % [decimal_pl, x, label]
+
+
+func _get_float_str_precision(float_str: String) -> int:
+	# WARNING: Does not account for "+", "e", or ",". Add these if needed.
+	const DECIMAL_UNICODE := ord(".")
+	return float_str.remove_char(DECIMAL_UNICODE).lstrip("~-0").length()
