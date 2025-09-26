@@ -69,7 +69,7 @@ enum LatitudeLongitudeType {
 
 
 
-## String for formatting scientific notation. E.g., set to " × 10^" for "9.99 × 10^9".
+## String for formatting scientific notation. E.g., set to " ×10^" for "9.99 ×10^9".
 var exponent_str := "e"
 
 var dynamic_large := 99999.5
@@ -102,7 +102,7 @@ var large_number_names: Array[StringName] = [
 ]
 
 ## "Long form" unit names as text keys. If a unit is missing here, code will fallback to
-## [member short_forms] and then to the unit symbol itself.[br][br]
+## "short form" dictionaries and then to the unit symbol itself.[br][br]
 ##
 ## Note that you can dynamically prefix any base unit (m, g, Hz, Wh, etc.)
 ## using [method prefixed_unit]. We have already-prefixed units here
@@ -202,29 +202,29 @@ var long_forms: Dictionary[StringName, StringName] = {
 	&"Wb" : &"TXT_WEBERS",
 	# magnetic flux density
 	&"T" : &"TXT_TESLAS",
+	# misc
+	&"percent" : &"TXT_PERCENT",
+	&"ppm" : &"TXT_PPM",
+	&"ppb" : &"TXT_PPB",
 }
 
-## "Short form" unit names. If a unit is missing here, code will fallback to the
-## unit StringName itself (which is usually what we want: e.g., "km", "km/s", etc.).
+## "Short form" units with standard spacing. See also [member unspaced_short_forms]. 
 ## This dictionary is needed only where the internal unit symbol differs from
 ## the display symbol.
-var short_forms: Dictionary[StringName, String] = {
+var spaced_short_forms: Dictionary[StringName, String] = {
+	&"g0" : "g", # g-force equivalent can't have same internal symbol as gram
+}
+
+## "Short form" units not preceded by a space (e.g., ° and % symbols as units).
+## See also [member unspaced_short_forms].
+var unspaced_short_forms: Dictionary[StringName, String] = {
 	&"deg" : "°",
 	&"degC" : "°C",
 	&"degF" : "°F",
 	&"deg/d" : "°/d",
 	&"deg/a" : "°/a",
 	&"deg/Cy" : "°/Cy",
-	&"g0" : "g", # duplicate display for gram and g-force equivalent
-}
-
-## Symbols that should not be preceded by a space. Possibly only units that
-## display with the degree symbol (°) as first character.
-var unspaced_units: Dictionary[StringName, bool] = {
-	&"deg" : true,
-	&"deg/d" : true,
-	&"deg/a" : true,
-	&"deg/Cy" : true,
+	&"percent" : "%",
 }
 
 ## Contains quantity format Callables that can be specified in [method dynamic_unit].
@@ -544,21 +544,22 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 	var number_str := number(x, precision, number_type)
 	
 	var unit_str: String
-	var is_space := true
 	
 	if text_format >= 3 and _long_forms_tr.has(unit): # long format
-		unit_str = _long_forms_tr[unit]
+		unit_str = " " + _long_forms_tr[unit]
 		if text_format == LONG_UPPER_CASE:
 			unit_str = unit_str.to_upper()
 		elif text_format == LONG_LOWER_CASE:
-			unit_str = unit_str.to_upper()
+			unit_str = unit_str.to_lower()
 	
-	else: # short format
-		is_space = not unspaced_units.has(unit)
-		unit_str = short_forms[unit] if short_forms.has(unit) else String(unit)
+	else: # short format (no case changes)
+		if unspaced_short_forms.has(unit):
+			unit_str = unspaced_short_forms[unit]
+		elif spaced_short_forms.has(unit):
+			unit_str = " " + spaced_short_forms[unit]
+		else:
+			unit_str = " " + unit
 	
-	if is_space:
-		return number_str + " " + unit_str
 	return number_str + unit_str
 
 
@@ -583,7 +584,6 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
 	const LONG_MIXED_CASE := TextFormat.LONG_MIXED_CASE
 	const LONG_UPPER_CASE := TextFormat.LONG_UPPER_CASE
-	const LONG_LOWER_CASE := TextFormat.LONG_LOWER_CASE
 	const LOG_MULTIPLIER_3_ORDERS := 1.0 / (3.0 * log(10.0))
 	
 	if is_nan(x):
@@ -608,29 +608,31 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 		si_index += 1
 	
 	var unit_str: String
-	var is_space := true
 	
 	if text_format >= 3 and _long_forms_tr.has(unit): # long format
-		unit_str = _long_forms_tr[unit]
 		var prefix_name: String = prefix_names[si_index]
 		if text_format == LONG_MIXED_CASE:
-			if prefix_name != "":
-				unit_str = prefix_name + unit_str.to_lower()
+			if prefix_name == "":
+				unit_str = " " + _long_forms_tr[unit]
+			else:
+				unit_str = " " + prefix_name + _long_forms_tr[unit].to_lower()
 		elif text_format == LONG_UPPER_CASE:
-			unit_str = (prefix_name + unit_str).to_upper()
-		elif text_format == LONG_LOWER_CASE:
-			unit_str = (prefix_name + unit_str).to_lower()
+			unit_str = " " + (prefix_name + _long_forms_tr[unit]).to_upper()
+		else: # LONG_LOWER_CASE
+			unit_str = " " + (prefix_name + _long_forms_tr[unit]).to_lower()
 	
-	else: # short format
-		is_space = not unspaced_units.has(unit)
+	else: # short format (no case changes for prefix or symbols)
 		var prefix_symbol: String = prefix_symbols[si_index]
-		if short_forms.has(unit):
-			unit_str = prefix_symbol + short_forms[unit]
+		if unspaced_short_forms.has(unit):
+			if prefix_symbol == "":
+				unit_str = unspaced_short_forms[unit]
+			else: # prefix needs a space!
+				unit_str = " " + prefix_symbol + unspaced_short_forms[unit]
+		elif spaced_short_forms.has(unit):
+			unit_str = " " + prefix_symbol + spaced_short_forms[unit]
 		else:
-			unit_str = prefix_symbol + unit
+			unit_str = " " + prefix_symbol + unit
 	
-	if is_space:
-		return number_str + " " + unit_str
 	return number_str + unit_str
 
 

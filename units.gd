@@ -122,7 +122,7 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	&"t" : TONNE,
 	# angle
 	&"rad" : 1.0,
-	&"deg" : DEG,
+	&"deg" : DEG, # displays as x° (see IVQFormat)
 	# temperature
 	&"K" : KELVIN,
 	# frequency
@@ -207,6 +207,10 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	&"MiB" : 8.0 * 1024.0 ** 2,
 	&"GiB" : 8.0 * 1024.0 ** 3,
 	&"TiB" : 8.0 * 1024.0 ** 4,
+	# misc
+	&"percent" : 100.0, # e.g., display x = 0.55 as "55%" (see IVQFormat)
+	&"ppm" : 1e6,
+	&"ppb" : 1e9,
 }
 
 ## Conversion lambdas for units that are nonlinear or have non-zero intersect
