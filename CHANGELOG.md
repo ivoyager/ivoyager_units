@@ -11,9 +11,10 @@ Now release candidate for I, Voyager "beta"!
 Under development using Godot 4.5.
 
 ### Added
-* IVQFormat.DynamicUnitType.TIME_H_D_Y
+* New units to unit_multipliers: percent, ppm, ppb.
 
 ### Changed
+* [API breaking] Reworked dynamic_unit() so that projects can add new dynamic Callables.
 * IVQFormat functions return "" when x arg is NAN.
 
 ## [v0.0.4] - 2025-06-12
