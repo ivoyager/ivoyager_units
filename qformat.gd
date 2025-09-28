@@ -52,17 +52,23 @@ enum TextFormat {
 ## except in the case of DECIMAL_PLACES.
 enum NumberType {
 	## Scientific notation if absolute value is greater than [member dynamic_large]
-	## or less than [member dynamic_small]. Otherwise, standard numbers using
-	## decimal places as needed for precision (e.g., "1.00" for precision == 3).
+	## or less than [member dynamic_small]. Otherwise, standard numbers with
+	## zeros after the decimal as needed for precision. E.g., "1.00" with precision 3.
 	## Allows over-precision in the case of non-scientific whole numbers. E.g.,
-	## "555555" rather than "556000" with precision == 3.
+	## "555555" rather than "556000" with precision 3.
 	DYNAMIC,
-	## All values in scientific notation with specified significan digits.
+	## Scientific notation with significant digits as specified by precision.
 	SCIENTIFIC,
-	## Standard (non-scientific) numbers with forced zeros for precision, e.g.,
-	## "1.00" or "556000" (not "555555") for precision == 3.
+	## Standard (non-scientific) numbers with zeros after the decimal as
+	## needed for precision. E.g., "1.00" with precision 3.
+	## Allows over-precision in the case of whole numbers. E.g.,
+	## "555555" rather than "556000" with precision 3.
+	MIN_PRECISION,
+	## Standard (non-scientific) numbers with zeros as needed for exact precision.
+	## E.g., "1.00" or "556000" (not "555555") with precision 3.
 	PRECISION,
-	## Generates scientific notation as DYNAMIC. As PRECISION for non-scientific numbers.
+	## Generates scientific notation as DYNAMIC. In the non-scientific range,
+	## generates exact precision as PRECISION.
 	DYNAMIC_PRECISION,
 	## Decimal representation using "precision" as number of decimal places.
 	DECIMAL_PLACES,
@@ -386,8 +392,9 @@ func _ready() -> void:
 	reset()
 	
 	# TODO: More tests...
-	#print(named_number(2.0, 3))
-	#print(named_number(999.5, 3, TextFormat.SHORT_MIXED_CASE, 999.5))
+	
+	#print(named_number(-1.5, 3))
+	#print(named_number(99.4, 3, TextFormat.SHORT_MIXED_CASE, 50.5))
 	#print(named_number(9.9999999e5, 3))
 	#print(named_number(1e6, 3))
 	#print(named_number(2e6, 3))
@@ -395,14 +402,14 @@ func _ready() -> void:
 	#print(named_number(2e12, 3))
 	#print(named_number(2e15, 3))
 	#print(named_number(2e18, 3))
-	#print(named_number(2e50, 3))
+	#print(named_number(-2e37, 3))
 
 
 ## Some array and dictionary properties require a reset() call after modifying;
 ## see property comments. reset() is also required if language
 ## changes at runtime.[br][br]
 ##
-## The reason for reset() is for indexing and also for "pre-translation" of all
+## The reason for reset() is for indexing and also for "pre-translation" of
 ## text keys. All text keys are pre-translated because [method Object.tr]
 ## throws an error if called on thread (as of Godot 4.5). Pre-translation
 ## allows calling String-return methods on threads.
@@ -421,21 +428,23 @@ func reset() -> void:
 
 
 
-## Returns a formatted number string specified by [param precision] and [param number_type].
-## See [enum NumberType].[br][br]
+## Returns a number string as specified by [param precision] and [param number_type].
+## See [enum NumberType] for format options.[br][br]
 ##
 ## If [param precision] is -1, return will be [code]String.num(x)[/code].[br][br]
 ##
 ## If [param precision] is 0 and number_type != DECIMAL_PLACES, return string
-## will have 1 significant digit with a prepended "~" (e.g., "~1 km" or "~0.5 km").[br][br]
+## will have 1 significant digit with a prepended "~". E.g., "~1 km" or "~0.5 km".[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> String:
 	const DYNAMIC := NumberType.DYNAMIC
 	const SCIENTIFIC := NumberType.SCIENTIFIC
+	const MIN_PRECISION := NumberType.MIN_PRECISION
 	const PRECISION := NumberType.PRECISION
 	const DECIMAL_PLACES := NumberType.DECIMAL_PLACES
 	const LOG_MULTIPLIER := 1.0 / log(10.0)
+	const DECIMAL_UNICODE := ord(".")
 	
 	assert(precision >= -1)
 	if is_nan(x):
@@ -449,7 +458,7 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 		prepend = "~"
 		precision = 1
 	
-	# handle 0.0 case (avoids math error and we don't want "0.00e0" even if SCIENTIFIC)
+	# handle 0.0 case (avoids math error below and we don't want "0.00e0" even if SCIENTIFIC)
 	if x == 0.0:
 		return "%s%.*f" % [prepend, precision - 1, 0.0] # e.g., "0.00" for precision 3
 	
@@ -460,18 +469,19 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 	# 100, etc.), exponent is sometimes one less than it should be. This is
 	# handled below where needed.
 	
-	if (number_type == PRECISION
+	if (number_type == MIN_PRECISION or number_type == PRECISION
 			or (number_type != SCIENTIFIC and abs_x < dynamic_large and abs_x > dynamic_small)):
 		var decimal_pl := precision - exponent - 1
 		if decimal_pl > 0: # has decimal part
 			var number_str := "%.*f" % [decimal_pl, x]
 			# Fix excess precision (e.g., 0.999999 w/ precision 3 -> "1.000").
-			if _get_float_str_precision(number_str) > precision:
-				number_str = number_str.trim_suffix("0")
+			if number_str[-1] == "0":
+				if number_str.remove_char(DECIMAL_UNICODE).lstrip("-0").length() > precision:
+					number_str = number_str.left(-1)
 			return prepend + number_str
-		elif number_type == DYNAMIC or decimal_pl == 0:
+		elif number_type == DYNAMIC or number_type == MIN_PRECISION or decimal_pl == 0:
 			return prepend + String.num(x, 0) # whole number
-		else: # PRECISION or DYNAMIC_PRECISION, so remove over-precision
+		else: # PRECISION or DYNAMIC_PRECISION whole number w/ too much precision
 			return prepend + str(snappedi(x, 10 ** -decimal_pl), 0) # "555000"
 	
 	# scientific
@@ -487,32 +497,37 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 
 
 ## Returns a named number string such as "1.00 Million", "1.00 Billion", etc.
-## Returns small numbers as the rounded number (e.g., "999999").[br][br]
+## Returns small numbers as [method number] with number_type == MIN_PRECISION.[br][br]
 ##
-## [param min_named] is the minimum [param x] to be named (999999.5 by default,
+## [param min_named] is the minimum abs([param x]) to be named (999999.5 by default,
 ## which accounts for rounding). Set to 999.5 to name numbers starting at
 ## "Thousand".[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE,
 		min_named := 999999.5) -> String:
+	const SCIENTIFIC := NumberType.SCIENTIFIC
+	const MIN_PRECISION := NumberType.MIN_PRECISION
 	const LOG_MULTIPLIER_3_ORDERS := 1.0 / (3.0 * log(10.0))
 	
 	if is_nan(x):
 		return "NAN"
 	
+	var number_type := MIN_PRECISION # unless we go past "Decillion" below
+	
 	var abs_x := absf(x)
 	if abs_x < min_named:
-		return "%.f" % x
+		return number(x, precision, number_type)
 	
-	var number_type := NumberType.PRECISION
 	var exponent_triples := floori(log(abs_x) * LOG_MULTIPLIER_3_ORDERS)
 	if exponent_triples < 1: # possible due to imprecission in equation above
 		exponent_triples = 1
 	elif exponent_triples > _n_large_number_names:
 		exponent_triples = _n_large_number_names
-		number_type = NumberType.SCIENTIFIC
-	x /= 10 ** (exponent_triples * 3) # exponent is always positive here
+		number_type = SCIENTIFIC
+	x /= 10.0 ** (exponent_triples * 3) # requires float operation! (not int ** int)
+	
+	# Fix bump up to next triplet due to imprecision and rounding
 	if roundi(x) == 1000 and exponent_triples < _n_large_number_names:
 		x /= 1000
 		exponent_triples += 1
@@ -541,20 +556,19 @@ func modified_named_number(x: float, precision := 3, text_format := TextFormat.S
 
 
 ## Calls a method specified in [member dynamic_unit_callables]. For example,
-## [param dynamic_name] == &"length_m_km_au_prefixed_pc" will result in
-## quantity strings with units "m", "km", "au", "pc", "kpc", "Mpc", "Gpc", etc.
-## (or "Meters", "Kilometers", ...) depending on the size of [param x]. See
-## code for available dynamic formats.[br][br]
+## [param callable_name] "length_m_km_au_prefixed_pc" will result in quantity
+## strings in units m, km, au, pc, kpc, Mpc, Gpc, etc. depending on the size of
+## [param x]. See code file for available dynamic unit callables.[br][br]
 ##
 ## The numerical part of the quantity string will be formatted as in [method number].[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
-func dynamic_unit(x: float, dynamic_name: StringName, precision := 3,
+func dynamic_unit(x: float, callable_name: StringName, precision := 3,
 		number_type := NumberType.DYNAMIC, text_format := TextFormat.SHORT_MIXED_CASE) -> String:
-	assert(dynamic_unit_callables.has(dynamic_name))
+	assert(dynamic_unit_callables.has(callable_name))
 	if is_nan(x):
 		return "NAN"
-	var callable := dynamic_unit_callables[dynamic_name]
+	var callable := dynamic_unit_callables[callable_name]
 	return callable.call(x, precision, number_type, text_format)
 
 
@@ -594,21 +608,23 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 	return number_str + unit_str
 
 
-## Returns a formatted quantity string with a number (usually between "1.00" and
-## "999" with default args) and a dynamically prefixed unit. For example, for
-## [param unit] == &"Hz", the return might be "999 kHz", "1.00 MHz",
-## "999 Kilohertz", or "1.00 Megahertz" (depending on other parameters).
-## Numbers will be <1.00 or >999 only if the value spills over the min or max
-## SI prefixes (currently q and Q).[br][br]
+## Returns a formatted quantity string with a number (with absolute value
+## between "1.00" and "999") and a dynamically prefixed unit. Numbers will be
+## less than 1.00 or greater than 999 only if the absolute value goes out of
+## range of SI prefixes, currently q (1e-30) to Q (1e30).[br][br]
 ##
-## Don't call with an already-prefixed unit such as "kg" (use "g" instead)
-## or any composite unit where the leading unit has a power other than one
-## (e.g., "m^3"). The result will look weird in the former case (e.g., "1.00 kkg")
-## and be be wrong in the latter case (e.g., 1000.0 m^3 might be displayed as
-## "1.00 km^3").[br][br]
+## E.g., unit "m" will generate quantity strings in qm, ..., µm, mm, m, km, Mm, ..., Qm.
+## Or use [method dynamic_unit] if you want more control. Don't call with an
+## already-prefixed unit such as "km" or you'll see results like "1.00 mkm"
+## and "1.00 kkm".[br][br]
 ##
-## The numerical part of the quantity string will be formatted as in [method number]
-## (number_type == DYNAMIC makes the most sense here).[br][br]
+## Compound units are ok as long as the leading unit has power one. Otherwise,
+## the generated string may look ok but be incorrect. E.g., 1000.0 m^3 would
+## generate something like "1.00 km^3".[br][br]
+##
+## The numerical part of the quantity string will be formatted as in [method number].
+## Use of DYNAMIC or DYNAMIC_PRECISION makes the most sense here, so that scientific
+## notation will happen only for quantities outside the range of SI units.[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func prefixed_unit(x: float, unit: StringName, precision := 3,
@@ -786,9 +802,3 @@ func longitude(x: float, decimal_pl := 0, lat_lon_type := LatitudeLongitudeType.
 				label = label.to_lower()
 	
 	return "%.*f° %s" % [decimal_pl, x, label]
-
-
-func _get_float_str_precision(float_str: String) -> int:
-	# WARNING: Does not account for "+", "e", or ",". Add these if needed.
-	const DECIMAL_UNICODE := ord(".")
-	return float_str.remove_char(DECIMAL_UNICODE).lstrip("~-0").length()
