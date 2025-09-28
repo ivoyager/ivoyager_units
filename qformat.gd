@@ -482,7 +482,7 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 		elif number_type == DYNAMIC or number_type == MIN_PRECISION or decimal_pl == 0:
 			return prepend + String.num(x, 0) # whole number
 		else: # PRECISION or DYNAMIC_PRECISION whole number w/ too much precision
-			return prepend + str(snappedi(x, 10 ** -decimal_pl), 0) # "555000"
+			return prepend + String.num(snappedf(x, 10.0 ** -decimal_pl), 0) # 555555 -> "556000"
 	
 	# scientific
 	var sign_str := "-" if x < 0.0 else ""
