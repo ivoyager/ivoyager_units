@@ -122,7 +122,7 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	&"t" : TONNE,
 	# angle
 	&"rad" : 1.0,
-	&"deg" : DEG, # displays as x° (see IVQFormat)
+	&"deg" : DEG, # IVQFormat displays as °
 	# temperature
 	&"K" : KELVIN,
 	# frequency
@@ -143,7 +143,7 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	&"c" : SPEED_OF_LIGHT,
 	# acceleration/gravity
 	&"m/s^2" : METER / SECOND ** 2,
-	&"g0" : STANDARD_GRAVITY,
+	&"g0" : STANDARD_GRAVITY, # IVQFormat displays as g
 	# angular velocity
 	&"rad/s" : 1.0 / SECOND, 
 	&"deg/d" : DEG / DAY,

@@ -19,26 +19,24 @@
 # *****************************************************************************
 extends Node
 
-## Singleton [IVQFormat] provides API for formatting numbers and unit quantities
+## Singleton IVQFormat provides API for formatting numbers and unit quantities
 ## for GUI display.
 ##
 ## Methods here use [IVQConvert] for unit conversions, which assumes (and
 ## helps ensure) that the calling project uses consistant internal units.[br][br]
-##
+## 
 ## If using named numbers or "long form" units, you'll need to add translations
 ## to your project. An Engligh translation is included in the plugin in file
-## [code]ivoyaber_units/text/unit_numbers_text.en.translation[/code].[br][br]
+## [code]ivoyager_units/text/unit_numbers_text.en.translation[/code].[br][br]
 ##
-## Call [method reset] after modifying any array or dictionary properties, or
-## after changing language at runtime. This is needed if container sizes or
-## translations change. (All text keys are pre-translated because [method Object.tr]
-## throws an error if called on thread as of Godot 4.5. Pre-translation allows
-## calling any String-return method here on threads.)
+## Some array and dictionary properties require a [method reset] call after
+## modifying; see property comments. [method reset] is also required if language
+## changes at runtime.
 
 
 
-## Defines display of unit symbols (versus unit names) and text case. Note that
-## case is never altered in unit symbols.
+## Specifies use of unit symbols or full unit names, and text case.
+## Note that case is never altered in unit symbols.
 enum TextFormat {
 	# WARNING: Some code assumes first 3 are "short".
 	SHORT_MIXED_CASE, ## Examples: "1.00 Million", "1.00 kHz".
@@ -50,14 +48,24 @@ enum TextFormat {
 }
 
 ## Defines number format and the meaning of [param precision] in method calls.
-## Note that [param precision] means significant digits except in the case of
-## [member NumberType.DECIMAL_PLACES].
+## Note that precision always means significant digits (NOT decimal places)
+## except in the case of DECIMAL_PLACES.
 enum NumberType {
-	DYNAMIC, ## Scientific if absolute value > [member dynamic_large] or < [member dynamic_small].
-	SCIENTIFIC, ## Always scientific using precision as significant digits.
-	PRECISION, ## Non-scientific; force zeros for precision, e.g., "556000", not "555555".
-	DYNAMIC_PRECISION, ## As PRECISION for non-scientific range.
-	DECIMAL_PLACES, ## Decimal representation with decimal places equal to [param precision].
+	## Scientific notation if absolute value is greater than [member dynamic_large]
+	## or less than [member dynamic_small]. Otherwise, standard numbers using
+	## decimal places as needed for precision (e.g., "1.00" for precision == 3).
+	## Allows over-precision in the case of non-scientific whole numbers. E.g.,
+	## "555555" rather than "556000" with precision == 3.
+	DYNAMIC,
+	## All values in scientific notation with specified significan digits.
+	SCIENTIFIC,
+	## Standard (non-scientific) numbers with forced zeros for precision, e.g.,
+	## "1.00" or "556000" (not "555555") for precision == 3.
+	PRECISION,
+	## Generates scientific notation as DYNAMIC. As PRECISION for non-scientific numbers.
+	DYNAMIC_PRECISION,
+	## Decimal representation using "precision" as number of decimal places.
+	DECIMAL_PLACES,
 }
 
 ## Return format for latitude, longitude strings.
@@ -68,29 +76,33 @@ enum LatitudeLongitudeType {
 }
 
 
-
-## String for formatting scientific notation. E.g., set to " ×10^" for "9.99 ×10^9".
+## String for formatting scientific notation. Displays numbers in "9.99e9" format
+## by default. Set to " ×10^" for "9.99 ×10^9" instead.
 var exponent_str := "e"
-
+## For number_type == [enum NumberType].DYNAMIC, this sets the minimum absolute
+## value to format "large" numbers in scientific notation.
 var dynamic_large := 99999.5
+## For number_type == [enum NumberType].DYNAMIC, this sets the maximum absolute
+## value to format "small" numbers in scientific notation.
 var dynamic_small := 0.01
 
-
 ## 3rd magnitude prefixes (full names). If modifying, be sure to modify [member prefix_symbols]
-## and [member prefix_offset] as needed.
+## as needed. Note: code requires one array element to be "" for indexing.
+##
+## Call [method reset] after modifying.
 var prefix_names: Array[String] = [ # e-30, ..., e30
 	"Quecto", "Ronto", "Yocto", "Zepto", "Atto", "Femto", "Pico", "Nano", "Micro", "Milli",
 	"", "Kilo", "Mega", "Giga", "Tera", "Peta", "Exa", "Zetta", "Yotta", "Ronna", "Quetta",
 ]
+
 ## 3rd magnitude prefixes (symbols). If modifying, be sure to modify [member prefix_names]
-## and [member prefix_offset] as needed.
+## as needed. Note: code requires one array element to be "" for indexing.
+##
+## Call [method reset] after modifying.
 var prefix_symbols: Array[String] = [ # e-30, ..., e30
 	"q", "r", "y", "z", "a", "f", "p", "n", "µ", "m",
 	"", "k", "M", "G", "T", "P", "E", "Z", "Y", "R", "Q",
 ]
-## Index of the non-prefixed element in [member prefix_names] and  [member prefix_symbols].
-## Update if changing those arrays.
-var prefix_offset := prefix_symbols.find("") # UPDATE if prefix_symbols changed!
 
 ## 3rd magnitude number names as text keys, starting with 1e3.[br][br]
 ##
@@ -102,14 +114,14 @@ var large_number_names: Array[StringName] = [
 ]
 
 ## "Long form" unit names as text keys. If a unit is missing here, code will fallback to
-## "short form" dictionaries and then to the unit symbol itself.[br][br]
+## "short form" symbol dictionaries and then to the internal unit StringName itself.[br][br]
 ##
 ## Note that you can dynamically prefix any base unit (m, g, Hz, Wh, etc.)
 ## using [method prefixed_unit]. We have already-prefixed units here
 ## because it is common to want to display fixed units such as "3.00e9 km".[br][br]
 ##
-## IMPORTANT! Call [method reset] after modifying.
-var long_forms: Dictionary[StringName, StringName] = {
+## Call [method reset] after modifying.
+var unit_names: Dictionary[StringName, StringName] = {
 	
 	# time
 	&"s" : &"TXT_SECONDS",
@@ -208,16 +220,18 @@ var long_forms: Dictionary[StringName, StringName] = {
 	&"ppb" : &"TXT_PPB",
 }
 
-## "Short form" units with standard spacing. See also [member unspaced_short_forms]. 
-## This dictionary is needed only where the internal unit symbol differs from
-## the display symbol.
-var spaced_short_forms: Dictionary[StringName, String] = {
+## "Short form" unit symbols with standard spacing. See also [member unspaced_unit_symbols]. 
+## This dictionary is needed only where the display symbol differs from
+## the internal unit StringName.
+var spaced_unit_symbols: Dictionary[StringName, String] = {
 	&"g0" : "g", # g-force equivalent can't have same internal symbol as gram
 }
 
-## "Short form" units not preceded by a space (e.g., ° and % symbols as units).
-## See also [member unspaced_short_forms].
-var unspaced_short_forms: Dictionary[StringName, String] = {
+## "Short form" unit symbols not preceded by a space, including ° and % as units.
+## Note that "1/<unit>" units can be added here so that, for example, unit "1/s"
+## will be displayed as "59.94/s" rather than "59.94 1/s".
+## See also [member spaced_unit_symbols].
+var unspaced_unit_symbols: Dictionary[StringName, String] = {
 	&"deg" : "°",
 	&"degC" : "°C",
 	&"degF" : "°F",
@@ -225,6 +239,14 @@ var unspaced_short_forms: Dictionary[StringName, String] = {
 	&"deg/a" : "°/a",
 	&"deg/Cy" : "°/Cy",
 	&"percent" : "%",
+	# Add more "1/<unit>" units as needed. It doesn't matter if they result from
+	# compound unit parsing and are not in unit_multipliers at init.
+	&"1/s" : "/s",
+	&"1/min" : "/min",
+	&"1/h" : "/h",
+	&"1/d" : "/d",
+	&"1/y" : "/y",
+	&"1/Cy" : "/Cy",
 }
 
 ## Contains quantity format Callables that can be specified in [method dynamic_unit].
@@ -348,15 +370,16 @@ var dynamic_unit_callables: Dictionary[StringName, Callable] = {
 }
 
 
+var _n_prefixes: int
+var _prefix_offset: int
 var _large_number_names_tr: Array[String] = []
+var _n_large_number_names: int
 var _long_forms_tr: Dictionary[StringName, String] = {}
 var _tr: Dictionary[StringName, String] = {}
 var _to_localize: Array[StringName] = [&"TXT_NORTH", &"TXT_SOUTH", &"TXT_EAST", &"TXT_WEST",
 		&"TXT_LATITUDE", &"TXT_LONGITUDE", &"TXT_PITCH", &"TXT_YAW",
 		&"TXT_NORTH_SHORT", &"TXT_SOUTH_SHORT", &"TXT_EAST_SHORT", &"TXT_WEST_SHORT",
 		&"TXT_LATITUDE_SHORT", &"TXT_LONGITUDE_SHORT"]
-var _n_prefixes: int
-var _n_large_number_names: int
 
 
 func _ready() -> void:
@@ -375,25 +398,31 @@ func _ready() -> void:
 	#print(named_number(2e50, 3))
 
 
-
-## Call this method after modifying any array or dictionary properties, or
-## after changing language at runtime (see class notes).
+## Some array and dictionary properties require a reset() call after modifying;
+## see property comments. reset() is also required if language
+## changes at runtime.[br][br]
+##
+## The reason for reset() is for indexing and also for "pre-translation" of all
+## text keys. All text keys are pre-translated because [method Object.tr]
+## throws an error if called on thread (as of Godot 4.5). Pre-translation
+## allows calling String-return methods on threads.
 func reset() -> void:
 	_n_prefixes = prefix_names.size()
 	assert(prefix_symbols.size() == _n_prefixes)
+	_prefix_offset = prefix_symbols.find("")
 	_n_large_number_names = large_number_names.size()
 	_large_number_names_tr.resize(_n_large_number_names)
 	for i in _n_large_number_names:
 		_large_number_names_tr[i] = tr(large_number_names[i])
-	for key in long_forms:
-		_long_forms_tr[key] = tr(long_forms[key])
+	for key in unit_names:
+		_long_forms_tr[key] = tr(unit_names[key])
 	for key in _to_localize:
 		_tr[key] = tr(key)
 
 
 
 ## Returns a formatted number string specified by [param precision] and [param number_type].
-## See [member NumberType].[br][br]
+## See [enum NumberType].[br][br]
 ##
 ## If [param precision] is -1, return will be [code]String.num(x)[/code].[br][br]
 ##
@@ -414,13 +443,13 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 	if number_type == DECIMAL_PLACES or precision == -1:
 		return String.num(x, precision)
 	
-	# approximate "~" prepend
+	# approximate "~" prepend for zero precision
 	var prepend := ""
 	if precision == 0:
 		prepend = "~"
 		precision = 1
 	
-	# handle 0.0 case (math error below & don't want "0.00e0" even if SCIENTIFIC)
+	# handle 0.0 case (avoids math error and we don't want "0.00e0" even if SCIENTIFIC)
 	if x == 0.0:
 		return "%s%.*f" % [prepend, precision - 1, 0.0] # e.g., "0.00" for precision 3
 	
@@ -475,20 +504,20 @@ func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXE
 	var abs_x := absf(x)
 	if abs_x < min_named:
 		return "%.f" % x
-		
+	
 	var number_type := NumberType.PRECISION
 	var exponent_triples := floori(log(abs_x) * LOG_MULTIPLIER_3_ORDERS)
 	if exponent_triples < 1: # possible due to imprecission in equation above
 		exponent_triples = 1
-	if exponent_triples > _n_large_number_names:
+	elif exponent_triples > _n_large_number_names:
 		exponent_triples = _n_large_number_names
 		number_type = NumberType.SCIENTIFIC
-	x /= 10 ** (exponent_triples * 3) # positive exponent here
+	x /= 10 ** (exponent_triples * 3) # exponent is always positive here
 	if roundi(x) == 1000 and exponent_triples < _n_large_number_names:
 		x /= 1000
 		exponent_triples += 1
 	
-	var number_name: String = _large_number_names_tr[exponent_triples - 1]
+	var number_name := _large_number_names_tr[exponent_triples - 1]
 	match text_format:
 		TextFormat.SHORT_UPPER_CASE, TextFormat.LONG_UPPER_CASE:
 			number_name = number_name.to_upper()
@@ -500,7 +529,8 @@ func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXE
 
 ## This is a wrapper method for [method named_number] that allows attachment
 ## of [param prefix] or [param suffix], or specification of a value [param multiplier].
-## It can be used to generate strings such as "$1.00 Billion", "1.00 Million Species", etc.[br][br]
+## It can be used to generate strings such as "$1.00 Billion", "1.00 Million Species",
+## etc.[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func modified_named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE,
@@ -513,7 +543,8 @@ func modified_named_number(x: float, precision := 3, text_format := TextFormat.S
 ## Calls a method specified in [member dynamic_unit_callables]. For example,
 ## [param dynamic_name] == &"length_m_km_au_prefixed_pc" will result in
 ## quantity strings with units "m", "km", "au", "pc", "kpc", "Mpc", "Gpc", etc.
-## (or "Meters", "Kilometers", ...). See code for available dynamic formats.[br][br]
+## (or "Meters", "Kilometers", ...) depending on the size of [param x]. See
+## code for available dynamic formats.[br][br]
 ##
 ## The numerical part of the quantity string will be formatted as in [method number].[br][br]
 ##
@@ -553,10 +584,10 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 			unit_str = unit_str.to_lower()
 	
 	else: # short format (no case changes)
-		if unspaced_short_forms.has(unit):
-			unit_str = unspaced_short_forms[unit]
-		elif spaced_short_forms.has(unit):
-			unit_str = " " + spaced_short_forms[unit]
+		if unspaced_unit_symbols.has(unit):
+			unit_str = unspaced_unit_symbols[unit]
+		elif spaced_unit_symbols.has(unit):
+			unit_str = " " + spaced_unit_symbols[unit]
 		else:
 			unit_str = " " + unit
 	
@@ -577,7 +608,7 @@ func fixed_unit(x: float, unit: StringName, precision := 3,
 ## "1.00 km^3").[br][br]
 ##
 ## The numerical part of the quantity string will be formatted as in [method number]
-## (DYNAMIC makes the most sense here).[br][br]
+## (number_type == DYNAMIC makes the most sense here).[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func prefixed_unit(x: float, unit: StringName, precision := 3,
@@ -593,14 +624,15 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 	var exponent_triples := 0
 	if x != 0.0:
 		exponent_triples = floori(log(absf(x)) * LOG_MULTIPLIER_3_ORDERS)
-	var si_index := exponent_triples + prefix_offset
+	var si_index := exponent_triples + _prefix_offset
 	if si_index < 0:
 		si_index = 0
-		exponent_triples = -prefix_offset
+		exponent_triples = -_prefix_offset
 	elif si_index >= _n_prefixes:
 		si_index = _n_prefixes - 1
-		exponent_triples = si_index - prefix_offset
+		exponent_triples = si_index - _prefix_offset
 	x /= 10.0 ** (exponent_triples * 3) # possibly negative exponent, need float
+	
 	var number_str := number(x, precision, number_type)
 	if number_str == "1000" and si_index < _n_prefixes - 1:
 		# Sometimes get results like "1000 MWh" due to imprecision and round up
@@ -623,13 +655,13 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 	
 	else: # short format (no case changes for prefix or symbols)
 		var prefix_symbol: String = prefix_symbols[si_index]
-		if unspaced_short_forms.has(unit):
+		if unspaced_unit_symbols.has(unit):
 			if prefix_symbol == "":
-				unit_str = unspaced_short_forms[unit]
+				unit_str = unspaced_unit_symbols[unit]
 			else: # prefix needs a space!
-				unit_str = " " + prefix_symbol + unspaced_short_forms[unit]
-		elif spaced_short_forms.has(unit):
-			unit_str = " " + prefix_symbol + spaced_short_forms[unit]
+				unit_str = " " + prefix_symbol + unspaced_unit_symbols[unit]
+		elif spaced_unit_symbols.has(unit):
+			unit_str = " " + prefix_symbol + spaced_unit_symbols[unit]
 		else:
 			unit_str = " " + prefix_symbol + unit
 	

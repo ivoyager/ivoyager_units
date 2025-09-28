@@ -15,7 +15,8 @@ Under development using Godot 4.5.
 
 ### Changed
 * [API breaking] Reworked dynamic_unit() so that projects can add new dynamic Callables.
-* IVQFormat functions return "" when x arg is NAN.
+* [API breaking] Extensive changes to API in IVQConvert and IVQFormat.
+* Most IVQFormat functions return "NAN" when x arg is NAN.
 
 ## [v0.0.4] - 2025-06-12
 
