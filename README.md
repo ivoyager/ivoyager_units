@@ -1,6 +1,6 @@
 # I, Voyager - Units
 
-This plugin helps maintain a consistent internal unit standard when many different units are needed for game data or display. It can handle all SI, some non-SI, and project-added units, and can parse compound units like `m^3/(kg s^2)`. It facilitates definition of quantity constants in class files such as `const TIME_INTERVAL = 10.0 * IVUnits.DAY`. It also converts internal quantities to GUI display strings like "1.50 x 10^8 km" with fixed or dynamic unit selection (including automated SI prefixing) or "8.2 Billion Humans" (using dynamically selected number names) with full specification of significant digits (not just decimal places).
+This plugin helps maintain consistent internal unit quantities when many different units are needed for game data or display. It can handle all SI, some non-SI, and project-added units, and can parse compound units like `m^3/(kg s^2)`. It facilitates definition of quantity constants in class files such as `const TIME_INTERVAL = 10.0 * IVUnits.DAY`. It also converts internal quantities to GUI display strings like "1.50 x 10^8 km" with fixed or dynamic unit selection (including automated SI prefixing) or "8.2 Billion Humans" (using dynamically selected number names) with full specification of significant digits (not just decimal places).
 
 This plugin can be used (optionally) with our [Tables plugin](https://github.com/ivoyager/ivoyager_tables) to read text file tables with unit quantities. When used together, whole column fields and/or individual table cells can have unit specification.
 
@@ -44,7 +44,7 @@ The singleton provides two dictionaries: `unit_multipliers` and `unit_lambdas`. 
 
 #### [IVQConvert](https://github.com/ivoyager/ivoyager_units/blob/master/qconvert.gd)
 
-This singleton provides two conversion methods `to_internal()` and `from_internal()` with required args `x: float` and `unit: StringName`. Optional args specify whether to parse compound units (true by default) or throw an error (default) or return NAN when `unit` isn't defined or can't be parsed. Method `is_valid_unit()` tests whether a unit string is valid for conversion methods.
+This singleton provides two conversion methods `to_internal()` and `from_internal()` with required args `x: float` and `unit: StringName`. Optional args specify whether to parse compound units (true by default) or whether to throw an error (default) or return NAN when `unit` isn't defined or can't be parsed. Method `is_valid_unit()` tests whether a unit string is valid for conversion methods.
 
 The methods use member dictionaries `unit_multipliers` and `unit_lambdas`, which are set to the two IVUnits dictionaries by default.  If `parse_compound_unit` is set, the methods will handle previously undefined compound units like `m^3/(kg s^2)`. The parsed unit StringName will be memoized by adding to `unit_multipliers` for faster subsequent usage.
 
@@ -71,7 +71,9 @@ The following strings are valid for unit parsing:
 
 This singleton provides methods for quantity conversion to strings for GUI display. User can specify the display unit, number format (e.g., scientific or dynamic), significant digits, and other details.
 
-`prefixed_unit()` generates quantity-unit strings with dynamically prefixed base units, e.g., "1.0 kW", "1.0 MW", "1.0 GW", "1.0 TW", etc. The function selects the appropriate 3-order prefix all the way from `q` (10^-30) to `Q` (10^30).
+`fixed_unit()` generates quantity strings in the specified fixed unit, converting internal quantities as needed.
+
+`prefixed_unit()` generates quantity strings with dynamically prefixed base units, e.g., "1.0 kW", "1.0 MW", "1.0 GW", "1.0 TW", etc. The function selects the appropriate 3-order prefix all the way from `q` (10^-30) to `Q` (10^30).
 
 `dynamic_unit()` allows dynamic selection of unit depending on the size of the value. E.g., in one mode of operation, it will generate a quantity string in "m", "km", "au" or SI-prefixed-"parsec" (whichever is appropriate).
 

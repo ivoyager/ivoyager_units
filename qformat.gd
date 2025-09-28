@@ -35,16 +35,16 @@ extends Node
 
 
 
-## Specifies use of unit symbols or full unit names, and text case.
+## Specifies unit reprentation (symbol or full unit name) and text case.
 ## Note that case is never altered in unit symbols.
 enum TextFormat {
-	# WARNING: Some code assumes first 3 are "short".
-	SHORT_MIXED_CASE, ## Examples: "1.00 Million", "1.00 kHz".
-	SHORT_UPPER_CASE, ## Examples: "1.00 MILLION", "1.00 kHz".
-	SHORT_LOWER_CASE, ## Examples: "1.00 million", "1.00 kHz".
-	LONG_MIXED_CASE, ## Examples: "1.00 Million", "1.00 Kilohertz".
-	LONG_UPPER_CASE, ## Examples: "1.00 MILLION", "1.00 KILOHERTZ".
-	LONG_LOWER_CASE, ## Examples: "1.00 million", "1.00 kilohertz".
+	# WARNING: Some code assumes <3 "short", >=3 "long".
+	SHORT_MIXED_CASE, ## "1.00 kHz", "1.00 Million".
+	SHORT_UPPER_CASE, ## "1.00 kHz", "1.00 MILLION".
+	SHORT_LOWER_CASE, ## "1.00 kHz", "1.00 million".
+	LONG_MIXED_CASE, ## "1.00 Kilohertz", "1.00 Million".
+	LONG_UPPER_CASE, ## "1.00 KILOHERTZ", "1.00 MILLION".
+	LONG_LOWER_CASE, ## "1.00 kilohertz", "1.00 million".
 }
 
 ## Defines number format and the meaning of [param precision] in method calls.
@@ -499,13 +499,16 @@ func number(x: float, precision := 3, number_type := NumberType.DYNAMIC) -> Stri
 ## Returns a named number string such as "1.00 Million", "1.00 Billion", etc.
 ## Returns small numbers as [method number] with number_type == MIN_PRECISION.[br][br]
 ##
+## If [param round_unnamed] is set, unnamed numbers will be rounded and displayed
+## without decimal places, irrespective of precision.[br][br]
+##
 ## [param min_named] is the minimum abs([param x]) to be named (999999.5 by default,
 ## which accounts for rounding). Set to 999.5 to name numbers starting at
 ## "Thousand".[br][br]
 ##
 ## Returns "NAN" if [param x] is NAN.
 func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE,
-		min_named := 999999.5) -> String:
+		round_unnamed := false, min_named := 999999.5) -> String:
 	const SCIENTIFIC := NumberType.SCIENTIFIC
 	const MIN_PRECISION := NumberType.MIN_PRECISION
 	const LOG_MULTIPLIER_3_ORDERS := 1.0 / (3.0 * log(10.0))
@@ -513,12 +516,13 @@ func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXE
 	if is_nan(x):
 		return "NAN"
 	
-	var number_type := MIN_PRECISION # unless we go past "Decillion" below
-	
 	var abs_x := absf(x)
 	if abs_x < min_named:
-		return number(x, precision, number_type)
+		if round_unnamed:
+			return String.num(x, 0)
+		return number(x, precision, MIN_PRECISION)
 	
+	var number_type := MIN_PRECISION # unless we go past "Decillion" below
 	var exponent_triples := floori(log(abs_x) * LOG_MULTIPLIER_3_ORDERS)
 	if exponent_triples < 1: # possible due to imprecission in equation above
 		exponent_triples = 1
@@ -549,10 +553,12 @@ func named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXE
 ##
 ## Returns "NAN" if [param x] is NAN.
 func modified_named_number(x: float, precision := 3, text_format := TextFormat.SHORT_MIXED_CASE,
+		round_unnamed := false, min_named := 999999.5,
 		prefix := "", suffix := "", multiplier := 1.0) -> String:
 	if is_nan(x):
 		return "NAN"
-	return prefix + named_number(x * multiplier, precision, text_format) + suffix
+	return prefix + named_number(x * multiplier, precision, text_format, round_unnamed,
+			min_named) + suffix
 
 
 ## Calls a method specified in [member dynamic_unit_callables]. For example,
