@@ -19,98 +19,143 @@
 # *****************************************************************************
 extends Node
 
-## This node is added as singleton "IVQConvert"
+## Singleton [IVQConvert] provides API for conversion of unit quantities to and
+## from a consistent internal unit standard.
 ##
-## Converts float quantities to or from internal units.
+## Dictionaries [member unit_multipliers] and [member unit_lambdas] must be
+## specified if different than [IVUnits] dictionaries.[br][br]
+##
+## Methods can parse compound units such as "m^3/(kg s^2)" assuming relevant
+## simple units ("m", "kg" and "s") are present in [member unit_multipliers].
+## See [method get_parsed_unit_multiplier] for parsing details. By default,
+## methods will memoize parsed compound units for faster subsequent usage. 
 
-const DPRINT := false
 
+## See [member IVUnits.unit_multipliers].
 var unit_multipliers: Dictionary[StringName, float] = IVUnits.unit_multipliers
+## See [member IVUnits.unit_lambdas].
 var unit_lambdas: Dictionary[StringName, Callable] = IVUnits.unit_lambdas
 
 
+## Tests whether [param unit] is valid for [method to_internal] or
+## [method from_internal].[br][br]
+##
+## If a compound unit string is successfully parsed, then the compound unit name
+## and resulting multiplier will be memoized by adding to [member unit_multipliers]
+## as a key-value pair for subsequent lookup. (To disable, set
+## [param memoize_parsed_unit] to false.)[br][br]
+##
+## See parsing comments in [method get_parsed_unit_multiplier].
+func is_valid_unit(unit: StringName, parse_compound_unit := true, memoize_parsed_unit := true
+		) -> bool:
+	if !unit or unit_multipliers.has(unit) or unit_lambdas.has(unit):
+		return true
+	if !parse_compound_unit:
+		return false
+	var multiplier := get_parsed_unit_multiplier(unit, false)
+	if is_nan(multiplier):
+		return false
+	if memoize_parsed_unit:
+		unit_multipliers[unit] = multiplier
+	return true
 
-func is_valid_unit(unit: StringName, parse_compound_unit := false) -> bool:
-	# Tests whether 'unit' string is valid for convert_quantity().
-	return !is_nan(convert_quantity(1.0, unit, true, parse_compound_unit, false))
+
+## Parses and adds a compound unit to [member unit_multipliers] if it isn't
+## already present. This is only needed if accessing [member unit_multipliers]
+## directly without [method to_internal] or [method from_internal], as these
+## methods will parse and memoize compound units by default.[br][br]
+##
+## See parsing comments in [method get_parsed_unit_multiplier].
+func include_compound_unit(unit: StringName, allow_assert := true) -> void:
+	if !unit or unit_multipliers.has(unit):
+		return
+	var multiplier := get_parsed_unit_multiplier(unit, allow_assert)
+	if !is_nan(multiplier):
+		unit_multipliers[unit] = multiplier
 
 
-func convert_quantity(x: float, unit: StringName, to_internal := true,
-		parse_compound_unit := true, assert_error := true) -> float:
-	# Converts 'x' in specified 'unit' to internal float value, or from
-	# internal value if to_internal == false. Will attempt to parse the 'unit'
-	# string if parse_compound_unit == true. Throws an error if 'unit' is not
-	# present in conversion dictionaries or it can't be parsed, or returns NAN
-	# if assert_error == false.
-	#
-	# If 'unit' is in 'unit_multipliers' or 'unit_lambdas', then no parsing is
-	# attempted. Dictionary 'unit_multipliers' can have compound units like
-	# 'm/s^2' for quick lookup without parsing.
-	#
-	# If a unit string is parsed, then the unit name and multiplier will be
-	# added to 'unit_multipliers' as a key-value pair. This greately speeds up
-	# subsequent usage and makes the unit string directly accessible in the 
-	# dictionary (e.g., by GUI).
-	#
-	# See parsing comments in get_parsed_unit_multiplier().
+## Converts quantity [param x] in specified [param unit] to internal units as specified
+## by [member unit_multipliers] and [member unit_lambdas]. Will attempt to parse
+## a compound unit unless [param parse_compound_unit] is false.[br][br]
+##
+## Throws an error if [param unit] is not present in conversion dictionaries or
+## can't be parsed. Or returns NAN if [param allow_assert] is false.[br][br]
+##
+## If a compound unit string is successfully parsed, then the compound unit string
+## and derived multiplier will be memoized by adding to [member unit_multipliers]
+## as a key-value pair for subsequent lookup. (To disable, set
+## [param memoize_parsed_unit] to false.)[br][br]
+##
+## See parsing comments in [method get_parsed_unit_multiplier].
+func to_internal(x: float, unit: StringName, parse_compound_unit := true,
+		memoize_parsed_unit := true, allow_assert := true) -> float:
 	if !unit:
 		return x
-	
 	var multiplier: float = unit_multipliers.get(unit, 0.0)
 	if multiplier:
-		return x * multiplier if to_internal else x / multiplier
-	
+		return x * multiplier
 	if unit_lambdas.has(unit):
 		var lambda := unit_lambdas[unit]
-		return lambda.call(x, to_internal)
-	
+		return lambda.call(x, true)
 	if !parse_compound_unit:
-		assert(!assert_error,
-				"'%s' is not in unit_multipliers or unit_lambdas dictionaries" % unit)
+		assert(!allow_assert, "'%s' is not in unit_multipliers or unit_lambdas" % unit)
 		return NAN
-	
-	multiplier = get_parsed_unit_multiplier(unit, assert_error)
-	
-	unit_multipliers[unit] = multiplier # for direct access in subsequent usage!
-	
-	return x * multiplier if to_internal else x / multiplier
+	multiplier = get_parsed_unit_multiplier(unit, allow_assert)
+	if memoize_parsed_unit and !is_nan(multiplier):
+		unit_multipliers[unit] = multiplier
+	return x * multiplier
 
 
-func get_parsed_unit_multiplier(unit_str: String, assert_error: bool) -> float:
-	# Parsing isn't super fast. But once encountered by convert_quantity(), the
-	# unit name will be added to the 'unit_multipliers' dictionary for quick
-	# subsequent usage.
-	#
-	# Parser rules:
-	#
-	#   1. The compound unit string must be composed only of valid multiplier
-	#      units (i.e., in 'unit_multiplier' dictionary), valid float numbers,
-	#      unit operators, and parentheses '(' and ')'.
-	#   2. Allowed unit operatiors are "^", "/", and " ", corresponding to
-	#      exponentiation, division and multiplication, in that order of
-	#      precidence.
-	#   3. Operators must have a valid non-operator substring on each side
-	#      without adjacent spaces. Spaces are ONLY allowed as multiplication
-	#      operators.
-	#   4. Each parenthesis opening '(' must have a closing ')'.
-	#
-	# Example valid unit strings for parsing:
-	#
-	#   m/s^2
-	#   m^3/(kg s^2)
-	#   1e24
-	#   10^24
-	#   10^24 kg
-	#   1/d
-	#   d^-1
-	#   m^0.5
+## Inverse of [method to_internal]. Converts an internal quantity [param x]
+## to an external quantity in specified [param unit] (e.g., for GUI display).
+## Additional args are as in [method to_internal].
+func from_internal(x: float, unit: StringName, parse_compound_unit := true,
+		memoize_parsed_unit := true, allow_assert := true) -> float:
+	if !unit:
+		return x
+	var multiplier: float = unit_multipliers.get(unit, 0.0)
+	if multiplier:
+		return x / multiplier
+	if unit_lambdas.has(unit):
+		var lambda := unit_lambdas[unit]
+		return lambda.call(x, false)
+	if !parse_compound_unit:
+		assert(!allow_assert, "'%s' is not in unit_multipliers or unit_lambdas" % unit)
+		return NAN
+	multiplier = get_parsed_unit_multiplier(unit, allow_assert)
+	if memoize_parsed_unit and !is_nan(multiplier):
+		unit_multipliers[unit] = multiplier
+	return x / multiplier
+
+
+## Parses compound unit strings and returns a compound unit multiplier. Valid
+## [param unit_str] examples include "m/s^2", "m^3/(kg s^2)",
+## "1e24", "10^24", "10^24 kg", "1/d", "d^-1" and "m^0.5" (assuming that
+## "m", "kg", "s", and "d" are present in [member unit_multipliers]).[br][br]
+##
+## Does NOT attempt to parse unit prefixes such as "k" in "km".[br][br]
+##
+## Throws an error if [param unit_str] can't be parsed. Or returns NAN if
+## [param allow_assert] is false.[br][br]
+##
+## Parser rules:[br][br]
+##
+##   1. The compound unit string must be composed only of multiplier
+##      units (i.e., keys in [member unit_multipliers]), float numbers,
+##      unit operators, and opening and closing parentheses: "(", ")".[br]
+##   2. Allowed unit operatiors are "^", "/", and " ", corresponding to
+##      exponentiation, division and multiplication, in that order of precedence.[br]
+##   3. Spaces are ONLY allowed as multiplication operators![br]
+##   4. Operators must have a valid non-operator substring on each side without
+##      adjacent spaces.[br]
+##   5. Each parenthesis opening "(" must have a closing ")".
+func get_parsed_unit_multiplier(unit_str: String, allow_assert := true) -> float:
 	
-	# debug print unit strings & substrings
-	if DPRINT:
-		print(unit_str)
+	# debug print unit strings & substrings at each recursion...
+	# print(unit_str)
 	
 	if !unit_str:
-		assert(!assert_error, "Empty unit string or substring. This could be caused by a"
+		assert(!allow_assert, "Empty unit string or substring. This could be caused by a"
 				+ " disallowed space that is not a multiplication operator.")
 		return NAN
 	
@@ -138,10 +183,10 @@ func get_parsed_unit_multiplier(unit_str: String, assert_error: bool) -> float:
 				if enclosure_level == 0:
 					if position == length - 1:
 						return get_parsed_unit_multiplier(
-								unit_str.trim_prefix("(").trim_suffix(")"), assert_error)
+								unit_str.trim_prefix("(").trim_suffix(")"), allow_assert)
 					break # opening '(' matched before the end
 				if enclosure_level < 0:
-					assert(!assert_error,
+					assert(!allow_assert,
 							"Unmatched ')' in unit string or substring '%s'" % unit_str)
 					return NAN
 			position += 1
@@ -157,8 +202,8 @@ func get_parsed_unit_multiplier(unit_str: String, assert_error: bool) -> float:
 			elif chr == ")":
 				enclosure_level -= 1
 			elif chr == " " and enclosure_level == 0:
-				return (get_parsed_unit_multiplier(unit_str.left(position), assert_error)
-						* get_parsed_unit_multiplier(unit_str.substr(position + 1), assert_error))
+				return (get_parsed_unit_multiplier(unit_str.left(position), allow_assert)
+						* get_parsed_unit_multiplier(unit_str.substr(position + 1), allow_assert))
 			position += 1
 	
 	# divide two parts on non-enclosed "/"
@@ -172,8 +217,8 @@ func get_parsed_unit_multiplier(unit_str: String, assert_error: bool) -> float:
 			elif chr == ")":
 				enclosure_level -= 1
 			elif chr == "/" and enclosure_level == 0:
-				return (get_parsed_unit_multiplier(unit_str.left(position), assert_error)
-						/ get_parsed_unit_multiplier(unit_str.substr(position + 1), assert_error))
+				return (get_parsed_unit_multiplier(unit_str.left(position), allow_assert)
+						/ get_parsed_unit_multiplier(unit_str.substr(position + 1), allow_assert))
 			position += 1
 	
 	# exponentiate two parts on non-enclosed "^"
@@ -187,9 +232,9 @@ func get_parsed_unit_multiplier(unit_str: String, assert_error: bool) -> float:
 			elif chr == ")":
 				enclosure_level -= 1
 			elif chr == "^" and enclosure_level == 0:
-				return pow(get_parsed_unit_multiplier(unit_str.left(position), assert_error),
-						 get_parsed_unit_multiplier(unit_str.substr(position + 1), assert_error))
+				return pow(get_parsed_unit_multiplier(unit_str.left(position), allow_assert),
+						 get_parsed_unit_multiplier(unit_str.substr(position + 1), allow_assert))
 			position += 1
 	
-	assert(!assert_error, "Could not parse unit string or substring '%s'" % unit_str)
+	assert(!allow_assert, "Could not parse unit string or substring '%s'" % unit_str)
 	return NAN
