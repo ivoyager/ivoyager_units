@@ -90,7 +90,9 @@ var exponent_str := "e"
 var dynamic_large := 99999.5
 ## For number_type == [enum NumberType].DYNAMIC, this sets the maximum absolute
 ## value to format "small" numbers in scientific notation.
-var dynamic_small := 0.01
+var dynamic_small := 0.001
+## Minium absolute value to separate thousands in [method separate_thousands].
+var separate_thousands_minimum := 10000
 
 ## 3rd magnitude prefixes (full names). If modifying, be sure to modify [member prefix_symbols]
 ## as needed. Note: code requires one array element to be "" for indexing.
@@ -688,6 +690,30 @@ func prefixed_unit(x: float, unit: StringName, precision := 3,
 			unit_str = " " + prefix_symbol + unit
 	
 	return number_str + unit_str
+
+
+## Returns [param integer] as a String with comma separators every third digit.
+## The minium absolute value that will be separated is defined by [member
+## separate_thousands_minimum].
+func separate_thousands(integer: int) -> String:
+	const SEPARATOR := ","
+	if absi(integer) < separate_thousands_minimum:
+		return str(integer)
+	var string := ""
+	if integer < 0:
+		string = "-"
+		integer = -integer
+	var int_string := str(integer)
+	var length := int_string.length()
+	var offset := length % 3
+	string += int_string[0]
+	var i := 1
+	while i < length:
+		if (i - offset) % 3 == 0:
+			string += SEPARATOR
+		string += int_string[i]
+		i += 1
+	return string
 
 
 ## Returns a latitude-longitude string in degrees (°) in format specified by
