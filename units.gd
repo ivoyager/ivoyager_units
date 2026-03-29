@@ -123,6 +123,7 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	# angle
 	&"rad" : 1.0,
 	&"deg" : DEG, # IVQFormat displays as °
+	&"°" : DEG,
 	# temperature
 	&"K" : KELVIN,
 	# frequency
@@ -147,7 +148,9 @@ var unit_multipliers: Dictionary[StringName, float] = {
 	# angular velocity
 	&"rad/s" : 1.0 / SECOND, 
 	&"deg/d" : DEG / DAY,
+	&"°/d" : DEG / DAY,
 	&"deg/Cy" : DEG / CENTURY,
+	&"°/Cy" : DEG / CENTURY,
 	# particle density
 	&"m^-3" : 1.0 / METER ** 3,
 	# density
@@ -219,10 +222,13 @@ var unit_multipliers: Dictionary[StringName, float] = {
 ## and [param to_internal] specifies conversion to internal (true) or from
 ## internal (false).
 var unit_lambdas: Dictionary[StringName, Callable] = {
-	&"degC" : func convert_celsius(x: float, to_internal: bool) -> float:
-		# Assumes Kelvin is the internal unit.
+	# Temperature conversions assume Kelvin is the internal unit.
+	&"degC" : func convert_deg_celsius(x: float, to_internal: bool) -> float:
 		return x + 273.15 if to_internal else x - 273.15,
-	&"degF" : func convert_fahrenheit(x: float, to_internal: bool) -> float:
-		# Assumes Kelvin is the internal unit.
+	&"°C" : func convert_celsius(x: float, to_internal: bool) -> float:
+		return x + 273.15 if to_internal else x - 273.15,
+	&"degF" : func convert_deg_fahrenheit(x: float, to_internal: bool) -> float:
+		return  (x + 459.67) / 1.8 if to_internal else x * 1.8 - 459.67,
+	&"°F" : func convert_fahrenheit(x: float, to_internal: bool) -> float:
 		return  (x + 459.67) / 1.8 if to_internal else x * 1.8 - 459.67,
 }
