@@ -20,8 +20,14 @@
 @tool
 extends EditorPlugin
 
-# Adds autoload singletons as specified by cofig files
-# res://addons/ivoyager_units/ivoyager_units.cfg and res://ivoyager_override.cfg.
+## EditorPlugin that registers autoload singletons for the I, Voyager Units
+## plugin.
+##
+## Reads autoload entries from
+## [code]res://addons/ivoyager_units/ivoyager_units.cfg[/code] (with overrides
+## from [code]res://ivoyager_override.cfg[/code]) and registers them via
+## [method EditorPlugin.add_autoload_singleton]. Default autoloads include
+## [IVUnits], [IVQConvert], and [IVQFormat].
 
 
 

@@ -11,6 +11,9 @@ Under development using Godot 4.6.1.
 ### Added
 * Degree (°) symbol for angle and temperature units.
 
+### Changed
+* Completed doc comments in all files.
+
 
 ## [v0.1.1] - 2026-02-09
 
